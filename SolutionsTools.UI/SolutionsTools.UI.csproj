@@ -1,0 +1,320 @@
+﻿<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>
+    </ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{C1ABC4AB-D35B-4DAB-8E37-D70EE8FF21DD}</ProjectGuid>
+    <ProjectTypeGuids>{349c5851-65df-11da-9384-00065b846f21};{fae04ec0-301f-11d3-bf4b-00c04f79efbc}</ProjectTypeGuids>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>SolutionsTools.UI</RootNamespace>
+    <AssemblyName>SolutionsTools.UI</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <UseIISExpress>true</UseIISExpress>
+    <Use64BitIISExpress />
+    <IISExpressSSLPort>44317</IISExpressSSLPort>
+    <IISExpressAnonymousAuthentication />
+    <IISExpressWindowsAuthentication />
+    <IISExpressUseClassicPipelineMode />
+    <UseGlobalApplicationHostFile />
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <LangVersion>7.0</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <LangVersion>7.0</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Web.DynamicData" />
+    <Reference Include="System.Web.Entity" />
+    <Reference Include="System.Web.ApplicationServices" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.EnterpriseServices" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="WebIcons, Version=1.0.0.0, Culture=en-GB, processorArchitecture=MSIL">
+      <HintPath>..\packages\WebIcons.1.0.1.0\lib\net20\WebIcons.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Content\bootstrap-theme.css" />
+    <Content Include="Content\bootstrap-theme.min.css" />
+    <Content Include="Content\bootstrap.css" />
+    <Content Include="Content\bootstrap.min.css" />
+    <Content Include="Content\custom-radio.css" />
+    <Content Include="Content\loader.css" />
+    <Content Include="Content\Site.css" />
+    <Content Include="Content\sticky-footer-navbar.css" />
+    <Content Include="Content\style.css" />
+    <Content Include="Controls\acEmpresas.ascx" />
+    <Content Include="Controls\acExcluirEmpresas.ascx" />
+    <Content Include="Controls\acExcluirClientes.ascx" />
+    <Content Include="Controls\acUsuarios.ascx" />
+    <Content Include="Global.asax" />
+    <Content Include="Home.aspx" />
+    <Content Include="Img\arrow-first.png" />
+    <Content Include="Img\arrow-last.png" />
+    <Content Include="Img\arrow-next.png" />
+    <Content Include="Img\arrow-previous.png" />
+    <Content Include="Img\delete.png" />
+    <Content Include="Img\delete_gray.png" />
+    <Content Include="Img\edit.png" />
+    <Content Include="Img\favicon.png" />
+    <Content Include="Img\find.png" />
+    <Content Include="Img\loader.gif" />
+    <Content Include="Img\locker.png" />
+    <Content Include="Img\logo-color.png" />
+    <Content Include="Img\logo.png" />
+    <Content Include="Importar.aspx" />
+    <Content Include="ImportarNew.aspx" />
+    <Content Include="Import\FileSaver.js" />
+    <Content Include="Import\jquery.csv-0.71.min.js" />
+    <Content Include="Import\jquery.form.js" />
+    <Content Include="Import\jquery.js" />
+    <Content Include="Import\read.js" />
+    <Content Include="Import\process.js" />
+    <Content Include="Import\upload.js" />
+    <Content Include="Import\utils.js" />
+    <Content Include="Login.aspx" />
+    <Content Include="Scripts\main.js" />
+    <Content Include="Template\Email_Novo_Acesso.html" />
+    <Content Include="Template\Email_Redefinicao.html" />
+    <Content Include="Scripts\App.js" />
+    <Content Include="Empresas.aspx" />
+    <Content Include="Usuarios.aspx" />
+    <Content Include="Clientes.aspx" />
+    <Content Include="Controls\acModal.ascx" />
+    <Content Include="Scripts\bootstrap.js" />
+    <Content Include="Scripts\bootstrap.min.js" />
+    <Content Include="Scripts\jquery-3.2.1.slim.min.js" />
+    <Content Include="FileUploadHandler.ashx" />
+    <Content Include="FileProcessHandler.ashx" />
+    <None Include="packages.config" />
+    <Content Include="Sample\modelo.csv" />
+    <None Include="Scripts\jquery-3.4.1.intellisense.js" />
+    <Content Include="Scripts\jquery-3.4.1.js" />
+    <Content Include="Scripts\jquery-3.4.1.min.js" />
+    <Content Include="Scripts\jquery-3.4.1.slim.js" />
+    <Content Include="Scripts\jquery-3.4.1.slim.min.js" />
+    <Content Include="Scripts\jquery-slim.min.js" />
+    <Content Include="Scripts\jsrender.min.js" />
+    <Content Include="Scripts\loader.js" />
+    <Content Include="Scripts\modernizr-2.8.3.js" />
+    <Content Include="Scripts\popper.min.js" />
+    <Content Include="Controls\acClientes.ascx" />
+    <Content Include="Web.config">
+      <SubType>Designer</SubType>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App_Code\BaseWebUi.cs">
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="App_Code\Utils.cs" />
+    <Compile Include="App_Code\FileHandling.cs" />
+    <Compile Include="App_Code\CryptographyMD5.cs" />
+    <Compile Include="App_Code\LoginGenerator.cs" />
+    <Compile Include="App_Code\SendMail.cs" />
+    <Compile Include="App_Code\PasswordGenerator.cs" />
+    <Compile Include="Controls\acEmpresas.ascx.cs">
+      <DependentUpon>acEmpresas.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acEmpresas.ascx.designer.cs">
+      <DependentUpon>acEmpresas.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\acExcluirEmpresas.ascx.cs">
+      <DependentUpon>acExcluirEmpresas.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acExcluirEmpresas.ascx.designer.cs">
+      <DependentUpon>acExcluirEmpresas.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\acExcluirClientes.ascx.cs">
+      <DependentUpon>acExcluirClientes.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acExcluirClientes.ascx.designer.cs">
+      <DependentUpon>acExcluirClientes.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\acUsuarios.ascx.cs">
+      <DependentUpon>acUsuarios.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acUsuarios.ascx.designer.cs">
+      <DependentUpon>acUsuarios.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="FileProcessHandler.ashx.cs">
+      <DependentUpon>FileProcessHandler.ashx</DependentUpon>
+    </Compile>
+    <Compile Include="FileUploadHandler.ashx.cs">
+      <DependentUpon>FileUploadHandler.ashx</DependentUpon>
+    </Compile>
+    <Compile Include="Global.asax.cs">
+      <DependentUpon>Global.asax</DependentUpon>
+    </Compile>
+    <Compile Include="Home.aspx.cs">
+      <DependentUpon>Home.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Home.aspx.designer.cs">
+      <DependentUpon>Home.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Importar.aspx.cs">
+      <DependentUpon>Importar.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Importar.aspx.designer.cs">
+      <DependentUpon>Importar.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="ImportarNew.aspx.cs">
+      <DependentUpon>ImportarNew.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="ImportarNew.aspx.designer.cs">
+      <DependentUpon>ImportarNew.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Login.aspx.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Login.aspx.designer.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="App_Code\PasswordServices.cs" />
+    <Compile Include="UserInterface\UIExtMethods.cs" />
+    <Compile Include="Empresas.aspx.cs">
+      <DependentUpon>Empresas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Empresas.aspx.designer.cs">
+      <DependentUpon>Empresas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Usuarios.aspx.cs">
+      <DependentUpon>Usuarios.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Usuarios.aspx.designer.cs">
+      <DependentUpon>Usuarios.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Clientes.aspx.cs">
+      <DependentUpon>Clientes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Clientes.aspx.designer.cs">
+      <DependentUpon>Clientes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\acModal.ascx.cs">
+      <DependentUpon>acModal.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acModal.ascx.designer.cs">
+      <DependentUpon>acModal.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Site.Master.cs">
+      <DependentUpon>Site.Master</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Site.Master.designer.cs">
+      <DependentUpon>Site.Master</DependentUpon>
+    </Compile>
+    <Compile Include="App_Code\Tools.cs" />
+    <Compile Include="Controls\acClientes.ascx.cs">
+      <DependentUpon>acClientes.ascx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Controls\acClientes.ascx.designer.cs">
+      <DependentUpon>acClientes.ascx</DependentUpon>
+    </Compile>
+    <Compile Include="App_Data\UserDataAccess.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Site.Master" />
+    <None Include="Web.Debug.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </None>
+    <None Include="Web.Release.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="uploads\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SolutionsTools.BLL\SolutionsTools.BLL.csproj">
+      <Project>{99932a19-7deb-4724-8b0d-447af73bfe00}</Project>
+      <Name>SolutionsTools.BLL</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\SolutionsTools.DAL\SolutionsTools.DAL.csproj">
+      <Project>{cc75be21-27b4-45d2-91c8-77bd5852f162}</Project>
+      <Name>SolutionsTools.DAL</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\SolutionsTools.Services\SolutionsTools.Services.csproj">
+      <Project>{ba34df36-9320-4d0e-871b-30656559e34e}</Project>
+      <Name>SolutionsTools.Services</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <PropertyGroup>
+    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
+    <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+  </PropertyGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <Import Project="$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets" Condition="'$(VSToolsPath)' != ''" />
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v10.0\WebApplications\Microsoft.WebApplication.targets" Condition="false" />
+  <ProjectExtensions>
+    <VisualStudio>
+      <FlavorProperties GUID="{349c5851-65df-11da-9384-00065b846f21}">
+        <WebProjectProperties>
+          <UseIIS>True</UseIIS>
+          <AutoAssignPort>True</AutoAssignPort>
+          <DevelopmentServerPort>63763</DevelopmentServerPort>
+          <DevelopmentServerVPath>/</DevelopmentServerVPath>
+          <IISUrl>https://localhost:44317/</IISUrl>
+          <NTLMAuthentication>False</NTLMAuthentication>
+          <UseCustomServer>False</UseCustomServer>
+          <CustomServerUrl>
+          </CustomServerUrl>
+          <SaveServerSettingsInUserFile>False</SaveServerSettingsInUserFile>
+        </WebProjectProperties>
+      </FlavorProperties>
+    </VisualStudio>
+  </ProjectExtensions>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

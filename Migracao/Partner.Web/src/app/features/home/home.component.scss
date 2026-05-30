@@ -1,0 +1,27 @@
+.home {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+mat-card {
+  margin-top: 16px;
+  width: min(100%, 980px);
+  border-radius: 6px;
+  box-shadow: none;
+  background: transparent !important;
+  border-color: transparent;
+}
+
+h1 {
+  margin: 0;
+  font-size: 46px;
+  line-height: 1;
+  color: var(--text-color);
+}
+
+p {
+  margin-top: 16px;
+  font-size: 26px;
+  color: var(--text-color);
+}

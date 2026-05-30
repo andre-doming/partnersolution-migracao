@@ -1,0 +1,61 @@
+<h2 mat-dialog-title>{{ isEdit ? 'Editar usuário' : 'Novo usuário' }}</h2>
+
+<mat-dialog-content>
+  <form class="user-form" [formGroup]="form">
+    <mat-form-field appearance="outline">
+      <mat-label>Nome</mat-label>
+      <input matInput formControlName="name" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Login</mat-label>
+      <input matInput formControlName="login" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>E-mail</mat-label>
+      <input matInput formControlName="email" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Senha {{ isEdit ? '(opcional)' : '' }}</mat-label>
+      <input matInput type="password" formControlName="password" />
+    </mat-form-field>
+
+    <div class="flags">
+      <mat-checkbox formControlName="isAdmin">Administrador</mat-checkbox>
+      <mat-checkbox formControlName="accessToken">Acesso token</mat-checkbox>
+      <mat-checkbox formControlName="isActive">Ativo</mat-checkbox>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-row">
+      <mat-label>Empresas</mat-label>
+      <mat-select formControlName="companyIds" multiple>
+        <mat-select-trigger>
+          {{ form.controls.companyIds.value.length }} selecionada(s)
+        </mat-select-trigger>
+        @for (company of companies; track company.id) {
+          <mat-option [value]="company.id">{{ company.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-row">
+      <mat-label>Permissões</mat-label>
+      <mat-select formControlName="functionIds" multiple>
+        <mat-select-trigger>
+          {{ form.controls.functionIds.value.length }} selecionada(s)
+        </mat-select-trigger>
+        @for (func of functions; track func.id) {
+          <mat-option [value]="func.id">{{ func.name }} ({{ func.code }})</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">Salvar</button>
+</mat-dialog-actions>
+

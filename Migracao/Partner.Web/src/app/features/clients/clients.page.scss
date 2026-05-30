@@ -1,0 +1,61 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+}
+
+.clients-card {
+  margin: 0;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.clients-card mat-card-header {
+  margin-bottom: 0.5rem;
+}
+
+.clients-card mat-card-title {
+  line-height: 1.15;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+  padding-top: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.clients-card mat-card-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.table-wrapper {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+table {
+  width: 100%;
+  min-width: 1080px;
+}
+
+mat-paginator {
+  margin-top: 0.75rem;
+}
+

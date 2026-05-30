@@ -1,0 +1,65 @@
+<h2 mat-dialog-title>{{ isEdit ? 'Editar cliente' : 'Novo cliente' }}</h2>
+
+<mat-dialog-content>
+  <form class="client-form" [formGroup]="form">
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Nome*</mat-label>
+      <input matInput formControlName="firstName" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Sobrenome*</mat-label>
+      <input matInput formControlName="lastName" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always" class="full-row">
+      <mat-label>Documento*</mat-label>
+      <input matInput formControlName="document" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always" class="full-row">
+      <mat-label>E-mail*</mat-label>
+      <input matInput formControlName="email" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Sexo</mat-label>
+      <input matInput formControlName="gender" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Dt.Nascimento</mat-label>
+      <input matInput formControlName="birthDate" placeholder="dd/MM/yyyy" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Empresa*</mat-label>
+      <mat-select formControlName="companyId">
+        @for (company of companies; track company.id) {
+          <mat-option [value]="company.id">{{ company.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Departamento</mat-label>
+      <input matInput formControlName="department" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" floatLabel="always">
+      <mat-label>Cargo</mat-label>
+      <input matInput formControlName="role" />
+    </mat-form-field>
+
+    <div class="flags">
+      <mat-checkbox formControlName="approved">Aprovado</mat-checkbox>
+      <mat-checkbox formControlName="isActive">Ativo</mat-checkbox>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">Salvar</button>
+</mat-dialog-actions>
+

@@ -1,0 +1,124 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$light-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$azure-palette,
+    tertiary: mat.$red-palette
+  )
+));
+
+$dark-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: mat.$blue-palette,
+    tertiary: mat.$red-palette
+  )
+));
+
+:root {
+  --surface-bg: #edf0f3;
+  --panel-bg: #ffffff;
+  --panel-border: #d5dbe3;
+  --text-color: #243041;
+  --muted-text-color: #5d6976;
+  --topbar-bg: #343a41;
+  --topbar-text: #ffffff;
+  --footer-bg: #eceff3;
+  --footer-text: #5d6976;
+}
+
+body.theme-dark {
+  --surface-bg: #111722;
+  --panel-bg: #1a2332;
+  --panel-border: #2d3b54;
+  --text-color: #e6edf7;
+  --muted-text-color: #9aa9be;
+  --topbar-bg: #2b3443;
+  --topbar-text: #eaf1ff;
+  --footer-bg: #161e2b;
+  --footer-text: #9aa9be;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  font-family: 'Nunito Sans', 'Segoe UI', sans-serif;
+  color: var(--text-color);
+  background: var(--surface-bg);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+app-root {
+  display: block;
+  min-height: 100%;
+}
+
+body {
+  @include mat.all-component-themes($light-theme);
+}
+
+body.theme-dark {
+  @include mat.all-component-colors($dark-theme);
+}
+
+mat-card {
+  background: var(--panel-bg) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px !important;
+}
+
+mat-card-content {
+  padding-top: 0.5rem;
+}
+
+.mat-mdc-form-field {
+  width: 100%;
+}
+
+.mat-mdc-form-field .mdc-floating-label,
+.mat-mdc-form-field .mat-mdc-form-field-hint,
+.mat-mdc-form-field .mat-mdc-form-field-error,
+.mat-mdc-form-field .mat-mdc-input-element,
+.mat-mdc-select-value-text,
+.mat-mdc-select-arrow {
+  color: var(--text-color) !important;
+}
+
+.mat-mdc-text-field-wrapper,
+.mat-mdc-select-trigger {
+  border-radius: 8px;
+}
+
+.mat-mdc-unelevated-button,
+.mat-mdc-raised-button,
+.mat-mdc-outlined-button,
+.mat-mdc-button {
+  border-radius: 999px !important;
+}
+
+body.theme-dark .mat-mdc-outlined-button:not([disabled]) {
+  border-color: #5f7396;
+}
+
+body.theme-dark .mat-mdc-outlined-button[disabled],
+body.theme-dark .mat-mdc-unelevated-button[disabled],
+body.theme-dark .mat-mdc-raised-button[disabled] {
+  opacity: 0.6;
+}
+
+.mat-mdc-paginator,
+table.mat-mdc-table {
+  background: transparent !important;
+}

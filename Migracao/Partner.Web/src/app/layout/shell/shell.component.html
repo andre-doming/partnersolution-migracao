@@ -1,0 +1,31 @@
+<mat-toolbar class="topbar">
+  <div class="brand">
+    <img src="/assets/logo-bestoff-white.png" alt="BestOff" />
+  </div>
+
+  <nav class="menu">
+    @for (item of menuItems; track item.label) {
+      <a mat-button [routerLink]="item.link">{{ item.label }}</a>
+    }
+  </nav>
+
+  <div class="toolbar-actions">
+    <button mat-icon-button type="button" (click)="toggleTheme()" aria-label="Alternar tema">
+      <mat-icon>contrast</mat-icon>
+    </button>
+    <button mat-flat-button color="primary" type="button">
+      <mat-icon>person</mat-icon>
+      {{ userName }}
+    </button>
+    <button mat-flat-button color="warn" type="button" (click)="logout()">
+      <mat-icon>lock</mat-icon>
+      Logout
+    </button>
+  </div>
+</mat-toolbar>
+
+<main class="content">
+  <router-outlet />
+</main>
+
+<footer class="footer">© 2021 - Partner Solution - Todos os direitos reservados</footer>

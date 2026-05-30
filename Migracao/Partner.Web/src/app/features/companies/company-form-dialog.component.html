@@ -1,0 +1,35 @@
+<h2 mat-dialog-title>{{ isEdit ? 'Editar empresa' : 'Nova empresa' }}</h2>
+
+<mat-dialog-content>
+  <form class="company-form" [formGroup]="form">
+    <mat-form-field appearance="outline">
+      <mat-label>CNPJ</mat-label>
+      <input matInput formControlName="cnpj" placeholder="00.000.000/0000-00" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Nome fantasia</mat-label>
+      <input matInput formControlName="tradeName" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Razão social</mat-label>
+      <input matInput formControlName="corporateName" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Gerente responsável</mat-label>
+      <input matInput formControlName="managerName" />
+    </mat-form-field>
+
+    <div class="flags">
+      <mat-checkbox formControlName="isActive">Ativa</mat-checkbox>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">Salvar</button>
+</mat-dialog-actions>
+

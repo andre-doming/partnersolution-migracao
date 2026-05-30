@@ -1,0 +1,35 @@
+:host {
+  font-family: 'Nunito Sans', 'Segoe UI', sans-serif;
+}
+
+h2[mat-dialog-title],
+mat-dialog-content,
+mat-dialog-actions {
+  font-family: inherit;
+}
+
+.company-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  width: min(100%, 700px);
+  padding-top: 0.25rem;
+}
+
+mat-dialog-content {
+  max-height: none;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  padding-top: 0.5rem;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.flags {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+

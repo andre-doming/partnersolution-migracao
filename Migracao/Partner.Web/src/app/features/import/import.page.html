@@ -1,0 +1,234 @@
+<mat-card class="import-card">
+  <mat-card-header>
+    <mat-card-title>Importação CSV</mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    <form class="upload-form" [formGroup]="uploadForm" (ngSubmit)="preview()">
+      <mat-form-field appearance="outline">
+        <mat-label>Empresa</mat-label>
+        <mat-select formControlName="companyId">
+          @for (company of companies; track company.id) {
+            <mat-option [value]="company.id">{{ company.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Arquivo CSV</mat-label>
+        <input matInput [value]="selectedFile?.name ?? ''" readonly />
+      </mat-form-field>
+
+      <div class="upload-actions">
+        <input #fileInput type="file" accept=".csv,text/csv" (change)="onFileSelected($event)" hidden />
+        <button mat-stroked-button type="button" (click)="fileInput.click()">
+          <mat-icon>attach_file</mat-icon>
+          Selecionar CSV
+        </button>
+
+        <button mat-flat-button color="primary" type="submit" [disabled]="isUploading">
+          <mat-icon>visibility</mat-icon>
+          Visualizar CSV
+        </button>
+
+        <button mat-flat-button color="accent" type="button" (click)="processSelected()" [disabled]="isUploading || selectedValidCount === 0">
+          <mat-icon>upload</mat-icon>
+          Processar selecionados
+        </button>
+      </div>
+    </form>
+
+    <div class="history-toggle">
+      <button mat-stroked-button type="button" (click)="toggleHistory()">
+        <mat-icon>{{ showHistory ? 'visibility_off' : 'history' }}</mat-icon>
+        {{ showHistory ? 'Ocultar histórico de importações' : 'Mostrar histórico de importações' }}
+      </button>
+    </div>
+
+    @if (isUploading) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    @if (previewResult; as preview) {
+      <section class="preview">
+        <h3>Pré-visualização do CSV</h3>
+        <div class="summary-grid">
+          <div><strong>Arquivo:</strong> {{ preview.fileName }}</div>
+          <div><strong>Total:</strong> {{ preview.totalRows }}</div>
+          <div><strong>Válidas:</strong> {{ preview.validRows }}</div>
+          <div><strong>Inválidas:</strong> {{ preview.invalidRows }}</div>
+          <div><strong>Selecionadas:</strong> {{ selectedValidCount }}</div>
+        </div>
+
+        <div class="upload-actions">
+          <button mat-stroked-button type="button" (click)="selectAllValid()">Selecionar válidas</button>
+          <button mat-stroked-button type="button" (click)="clearSelection()">Limpar seleção</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table mat-table [dataSource]="preview.lines" class="mat-elevation-z2">
+            <ng-container matColumnDef="select">
+              <th mat-header-cell *matHeaderCellDef>Sel.</th>
+              <td mat-cell *matCellDef="let item">
+                <mat-checkbox
+                  [disabled]="!item.isValid"
+                  [checked]="isLineSelected(item.lineNumber)"
+                  (change)="toggleLineSelection(item.lineNumber, $event.checked)">
+                </mat-checkbox>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="lineNumber">
+              <th mat-header-cell *matHeaderCellDef>Linha</th>
+              <td mat-cell *matCellDef="let item">{{ item.lineNumber }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="action">
+              <th mat-header-cell *matHeaderCellDef>Ação</th>
+              <td mat-cell *matCellDef="let item">{{ item.action }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="firstName">
+              <th mat-header-cell *matHeaderCellDef>Nome</th>
+              <td mat-cell *matCellDef="let item">{{ item.firstName }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="lastName">
+              <th mat-header-cell *matHeaderCellDef>Sobrenome</th>
+              <td mat-cell *matCellDef="let item">{{ item.lastName }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="document">
+              <th mat-header-cell *matHeaderCellDef>Documento</th>
+              <td mat-cell *matCellDef="let item">{{ item.document }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="email">
+              <th mat-header-cell *matHeaderCellDef>E-mail</th>
+              <td mat-cell *matCellDef="let item">{{ item.email }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="validation">
+              <th mat-header-cell *matHeaderCellDef>Validação</th>
+              <td mat-cell *matCellDef="let item">{{ item.validationMessage || 'OK' }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="previewColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: previewColumns"></tr>
+          </table>
+        </div>
+      </section>
+    }
+
+    @if (lastResult; as result) {
+      <section class="summary">
+        <h3>Resumo da importação</h3>
+        <div class="summary-grid">
+          <div><strong>Job:</strong> {{ result.jobId }}</div>
+          <div><strong>Status:</strong> {{ result.status }}</div>
+          <div><strong>Arquivo:</strong> {{ result.fileName }}</div>
+          <div><strong>Linhas:</strong> {{ result.totalRows }}</div>
+          <div><strong>Sucesso:</strong> {{ result.successRows }}</div>
+          <div><strong>Erros:</strong> {{ result.errorRows }}</div>
+          <div><strong>Duração (ms):</strong> {{ result.durationMs }}</div>
+        </div>
+
+        @if (result.errors.length > 0) {
+          <div class="table-wrapper">
+            <table mat-table [dataSource]="result.errors" class="mat-elevation-z2">
+              <ng-container matColumnDef="lineNumber">
+                <th mat-header-cell *matHeaderCellDef>Linha</th>
+                <td mat-cell *matCellDef="let item">{{ item.lineNumber }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="action">
+                <th mat-header-cell *matHeaderCellDef>Ação</th>
+                <td mat-cell *matCellDef="let item">{{ item.action }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="document">
+                <th mat-header-cell *matHeaderCellDef>Documento</th>
+                <td mat-cell *matCellDef="let item">{{ item.document }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="email">
+                <th mat-header-cell *matHeaderCellDef>E-mail</th>
+                <td mat-cell *matCellDef="let item">{{ item.email }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="message">
+                <th mat-header-cell *matHeaderCellDef>Erro</th>
+                <td mat-cell *matCellDef="let item">{{ item.message }}</td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="errorColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: errorColumns"></tr>
+            </table>
+          </div>
+        }
+      </section>
+    }
+
+    @if (showHistory) {
+    <section class="history">
+      <h3>Histórico de importações</h3>
+
+      <div class="table-wrapper">
+        <table mat-table [dataSource]="jobs" class="mat-elevation-z2">
+          <ng-container matColumnDef="id">
+            <th mat-header-cell *matHeaderCellDef>Job</th>
+            <td mat-cell *matCellDef="let item">{{ item.id }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="fileName">
+            <th mat-header-cell *matHeaderCellDef>Arquivo</th>
+            <td mat-cell *matCellDef="let item">{{ item.fileName }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let item">{{ item.status }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="totalRows">
+            <th mat-header-cell *matHeaderCellDef>Total</th>
+            <td mat-cell *matCellDef="let item">{{ item.totalRows }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="successRows">
+            <th mat-header-cell *matHeaderCellDef>Sucesso</th>
+            <td mat-cell *matCellDef="let item">{{ item.successRows }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="errorRows">
+            <th mat-header-cell *matHeaderCellDef>Erros</th>
+            <td mat-cell *matCellDef="let item">{{ item.errorRows }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="durationMs">
+            <th mat-header-cell *matHeaderCellDef>Duração (ms)</th>
+            <td mat-cell *matCellDef="let item">{{ item.durationMs }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="startedAt">
+            <th mat-header-cell *matHeaderCellDef>Início (UTC)</th>
+            <td mat-cell *matCellDef="let item">{{ item.startedAtUtc }}</td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="jobColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: jobColumns"></tr>
+        </table>
+      </div>
+
+      <mat-paginator
+        [length]="totalJobs"
+        [pageIndex]="pageIndex"
+        [pageSize]="pageSize"
+        [pageSizeOptions]="[10, 20, 50]"
+        (page)="onPageChange($event)">
+      </mat-paginator>
+    </section>
+    }
+  </mat-card-content>
+</mat-card>
+

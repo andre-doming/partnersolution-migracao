@@ -1,0 +1,60 @@
+:host {
+  font-family: 'Nunito Sans', 'Segoe UI', sans-serif;
+}
+
+h2[mat-dialog-title],
+mat-dialog-content,
+mat-dialog-actions {
+  font-family: inherit;
+}
+
+.client-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  padding-top: 0.25rem;
+}
+
+:host ::ng-deep .mdc-floating-label {
+  font-weight: 600;
+}
+
+mat-dialog-content {
+  max-height: none;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  padding-top: 0.5rem;
+}
+
+:host ::ng-deep .mat-mdc-dialog-content::-webkit-scrollbar {
+  display: none;
+}
+
+:host ::ng-deep .mat-mdc-dialog-content {
+  scrollbar-width: none;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.flags {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.full-row {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .client-form {
+    grid-template-columns: 1fr;
+    min-width: min(700px, 92vw);
+  }
+}
+

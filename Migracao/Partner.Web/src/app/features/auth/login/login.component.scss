@@ -1,0 +1,43 @@
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--surface-bg);
+  padding: 24px;
+}
+
+.login-card {
+  width: min(100%, 440px);
+  border-radius: 10px;
+  padding: 28px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+}
+
+img {
+  width: 240px;
+  display: block;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 16px 0 20px;
+  text-align: center;
+  color: #243041;
+  font-size: 40px;
+  font-weight: 400;
+}
+
+form {
+  display: grid;
+  gap: 10px;
+}
+
+.submit-btn {
+  height: 46px;
+  margin-top: 4px;
+  font-size: 16px;
+}
+
+.recovery-btn {
+  justify-self: end;
+}
