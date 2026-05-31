@@ -1,12 +1,16 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Features.Auth;
 using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
+using Partner.Api.Middleware;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 
 namespace Partner.Api.Shared.Extensions;
 
@@ -87,6 +91,127 @@ public static class ServiceCollectionExtensions
                 policy.RequireAssertion(context => HasAdminOrPermission(context.User, AuthPermissions.Import)));
         });
 
+        var policyRegistry = new RateLimitingPolicyRegistry();
+        policyRegistry.Register(RateLimitingPolicyNames.AuthLogin);
+        policyRegistry.Register(RateLimitingPolicyNames.AuthMfaVerify);
+        policyRegistry.Register(RateLimitingPolicyNames.AuthMfaActivate);
+        policyRegistry.Register(RateLimitingPolicyNames.AuthMfaSetup);
+        policyRegistry.Register(RateLimitingPolicyNames.AdminMfaReset);
+        policyRegistry.Register(RateLimitingPolicyNames.AdminMfaUnlock);
+
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.OnRejected = async (context, token) =>
+            {
+                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+                {
+                    var seconds = (int)Math.Max(0, Math.Ceiling(retryAfter.TotalSeconds));
+                    if (seconds > 0)
+                    {
+                        context.HttpContext.Response.Headers.RetryAfter = seconds.ToString();
+                    }
+                }
+
+                var policy = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<RateLimitPolicyMetadata>()?.PolicyName;
+                if (!string.IsNullOrWhiteSpace(policy))
+                {
+                    var metrics = context.HttpContext.RequestServices.GetRequiredService<RateLimitingMetrics>();
+                    metrics.Increment(policy);
+                }
+
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("RateLimiting");
+                logger.LogWarning(
+                    "Rate limit hit. Endpoint={Endpoint} Policy={Policy} CorrelationId={CorrelationId} RateLimitHit={RateLimitHit}",
+                    context.HttpContext.Request.Path.Value,
+                    policy ?? "unknown",
+                    CorrelationIdMiddleware.GetCorrelationId(context.HttpContext),
+                    true);
+
+                await context.HttpContext.Response.WriteAsJsonAsync(new { message = "Too many requests." }, cancellationToken: token);
+            };
+
+            options.AddPolicy(RateLimitingPolicyNames.AuthLogin, context =>
+            {
+                var partitionKey = $"ip:{RateLimitingPartitionResolver.ResolveIp(context)}|login:{RateLimitingPartitionResolver.ResolveLogin(context)}";
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey,
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+
+            options.AddPolicy(RateLimitingPolicyNames.AuthMfaVerify, context =>
+            {
+                var partitionKey = $"ip:{RateLimitingPartitionResolver.ResolveIp(context)}|pending:{RateLimitingPartitionResolver.ResolvePendingTokenId(context)}";
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey,
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+
+            options.AddPolicy(RateLimitingPolicyNames.AuthMfaActivate, context =>
+            {
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    $"user:{RateLimitingPartitionResolver.ResolveUserId(context)}",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+
+            options.AddPolicy(RateLimitingPolicyNames.AuthMfaSetup, context =>
+            {
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    $"user:{RateLimitingPartitionResolver.ResolveUserId(context)}",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+
+            options.AddPolicy(RateLimitingPolicyNames.AdminMfaReset, context =>
+            {
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    $"admin:{RateLimitingPartitionResolver.ResolveUserId(context)}",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+
+            options.AddPolicy(RateLimitingPolicyNames.AdminMfaUnlock, context =>
+            {
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    $"admin:{RateLimitingPartitionResolver.ResolveUserId(context)}",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    });
+            });
+        });
+
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen();
 
@@ -115,6 +240,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<RecoveryCodeService>();
         services.AddScoped<PendingTokenService>();
+        services.AddSingleton<RateLimitingMetrics>();
+        services.AddSingleton(policyRegistry);
         services.AddValidatorsFromAssemblyContaining<AuthLoginRequestValidator>(ServiceLifetime.Scoped, includeInternalTypes: true);
 
         return services;

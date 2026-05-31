@@ -6,6 +6,7 @@ using QRCoder;
 using Partner.Api.Features.Auth;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
+using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Middleware;
 using System.Text.Json;
 using System.Text;
@@ -22,18 +23,24 @@ public static class MfaEndpoints
 
         group.MapPost("/setup", SetupAsync)
             .RequireAuthorization()
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AuthMfaSetup))
+            .RequireRateLimiting(RateLimitingPolicyNames.AuthMfaSetup)
             .Produces<MfaSetupResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status409Conflict);
 
         group.MapPost("/activate", ActivateAsync)
             .RequireAuthorization()
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AuthMfaActivate))
+            .RequireRateLimiting(RateLimitingPolicyNames.AuthMfaActivate)
             .Produces<MfaActivateResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status409Conflict);
 
         group.MapPost("/verify", VerifyAsync)
             .AllowAnonymous()
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AuthMfaVerify))
+            .RequireRateLimiting(RateLimitingPolicyNames.AuthMfaVerify)
             .Produces<AuthLoginResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)

@@ -5,6 +5,7 @@ using Partner.Api.Features.Auth;
 using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
+using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Shared.Security;
 using Partner.Api.Middleware;
 using System.Data;
@@ -55,12 +56,16 @@ public static class UserEndpoints
 
         group.MapPost("/{id:int}/mfa/reset", ResetMfaAsync)
             .RequireAuthorization(AuthPolicies.UsersMfaAdmin)
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AdminMfaReset))
+            .RequireRateLimiting(RateLimitingPolicyNames.AdminMfaReset)
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
         group.MapPost("/{id:int}/mfa/unlock", UnlockUserAsync)
             .RequireAuthorization(AuthPolicies.UsersMfaAdmin)
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AdminMfaUnlock))
+            .RequireRateLimiting(RateLimitingPolicyNames.AdminMfaUnlock)
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);

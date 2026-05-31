@@ -76,6 +76,8 @@ app.UseHttpsRedirection();
 app.UseCors("PartnerWeb");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<RateLimitingBodyCaptureMiddleware>();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
 {

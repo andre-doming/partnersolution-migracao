@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
 using Partner.Api.Features.Auth.Mfa;
+using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Middleware;
 using System.Security.Cryptography;
 
@@ -21,6 +22,8 @@ public static class AuthEndpoints
 
         group.MapPost("/login", LoginAsync)
             .AllowAnonymous()
+            .WithMetadata(new RateLimitPolicyMetadata(RateLimitingPolicyNames.AuthLogin))
+            .RequireRateLimiting(RateLimitingPolicyNames.AuthLogin)
             .Produces<AuthLoginResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized);
