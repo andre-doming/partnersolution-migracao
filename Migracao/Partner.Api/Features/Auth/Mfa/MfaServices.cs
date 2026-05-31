@@ -24,25 +24,27 @@ public static class Base32Encoding
             return string.Empty;
         }
 
-        var output = new StringBuilder((data.Length + 4) / 5 * 8);
-        var buffer = data[0];
+        var outputLength = (data.Length * 8 + 4) / 5;
+        var output = new StringBuilder(outputLength);
+        var buffer = data[0] & 0xff;
         var next = 1;
         var bitsLeft = 8;
 
-        while (bitsLeft > 0 || next < data.Length)
+        while (output.Length < outputLength)
         {
             if (bitsLeft < 5)
             {
                 if (next < data.Length)
                 {
                     buffer <<= 8;
-                    buffer |= data[next++];
+                    buffer |= data[next++] & 0xff;
                     bitsLeft += 8;
                 }
                 else
                 {
-                    buffer <<= 5 - bitsLeft;
-                    bitsLeft = 5;
+                    var pad = 5 - bitsLeft;
+                    buffer <<= pad;
+                    bitsLeft += pad;
                 }
             }
 
@@ -99,7 +101,7 @@ public static class TotpGenerator
         return value.ToString().PadLeft(digits, '0');
     }
 
-    public static bool ValidateCode(byte[] secret, string code, DateTime timestamp, int digits = 6, int periodSeconds = 30, int allowedDriftWindows = 1)
+    public static bool ValidateCode(byte[] secret, string code, DateTime timestamp, int digits = 6, int periodSeconds = 30, int allowedDriftWindows = 2)
     {
         if (string.IsNullOrWhiteSpace(code))
         {

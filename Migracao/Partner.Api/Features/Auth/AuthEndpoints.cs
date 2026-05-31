@@ -35,6 +35,8 @@ public static class AuthEndpoints
         IPasswordHasher passwordHasher,
         IOptions<PasswordLockoutOptions> lockoutOptions,
         IOptions<MfaOptions> mfaOptions,
+        IJwtTokenService jwtTokenService,
+        IOptions<JwtOptions> jwtOptions,
         PendingTokenService pendingTokenService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -229,6 +231,17 @@ public static class AuthEndpoints
 
         if (!mfaState.MfaEnabled || mfaState.MfaResetRequired)
         {
+            var setupPermissions = (await connection.QueryAsync<string>(
+                new CommandDefinition(AuthQueries.GetPermissionsByUserId, new { UserId = user.Id }, cancellationToken: cancellationToken)))
+                .ToArray();
+
+            var setupCompanies = (await connection.QueryAsync<int>(
+                new CommandDefinition(AuthQueries.GetCompanyIdsByUserId, new { UserId = user.Id }, cancellationToken: cancellationToken)))
+                .ToArray();
+
+            var setupToken = jwtTokenService.GenerateToken(user, setupPermissions, setupCompanies);
+            var setupExpiresAt = DateTime.UtcNow.AddMinutes(jwtOptions.Value.ExpirationMinutes);
+
             await connection.ExecuteAsync(new CommandDefinition(
                 MfaQueries.InsertAuditLog,
                 new
@@ -247,7 +260,10 @@ public static class AuthEndpoints
 
             return Results.Ok(new AuthLoginResponse
             {
-                Status = MfaRules.StatusMfaSetupRequired
+                Status = MfaRules.StatusMfaSetupRequired,
+                AccessToken = setupToken,
+                ExpiresAtUtc = setupExpiresAt,
+                Name = user.Name
             });
         }
 

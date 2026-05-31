@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
 using QRCoder;
 using Partner.Api.Features.Auth;
 using Partner.Api.Infrastructure.Database;
@@ -75,8 +76,24 @@ public static class MfaEndpoints
             return Results.Conflict(new { message = "MFA already configured." });
         }
 
-        var secret = MfaSecrets.GenerateSecret();
-        var base32 = Base32Encoding.Encode(secret);
+        byte[] effectiveSecret;
+
+        if (state.MfaSecret is null || state.MfaSecret.Length == 0)
+        {
+            var secret = MfaSecrets.GenerateSecret();
+            await connection.ExecuteAsync(new CommandDefinition(
+                MfaQueries.UpdateMfaSetupStarted,
+                new { UserId = userId, MfaSecret = secret, MfaSetupStartedAt = now, UpdatedAt = now },
+                cancellationToken: cancellationToken));
+
+            effectiveSecret = secret;
+        }
+        else
+        {
+            effectiveSecret = state.MfaSecret;
+        }
+
+        var base32 = Base32Encoding.Encode(effectiveSecret);
         var issuer = "Partner";
         var accountName = ResolveUserLogin(httpContext.User);
         var otpAuthUri = OtpAuthUriBuilder.Build(issuer, accountName, base32);
@@ -87,11 +104,6 @@ public static class MfaEndpoints
         var maskedSecret = base32.Length <= 4
             ? base32
             : new string('*', base32.Length - 4) + base32[^4..];
-
-        await connection.ExecuteAsync(new CommandDefinition(
-            MfaQueries.UpdateMfaSetupStarted,
-            new { UserId = userId, MfaSecret = secret, MfaSetupStartedAt = now, UpdatedAt = now },
-            cancellationToken: cancellationToken));
 
         await InsertAuditAsync(connection, new MfaAuditLogEntry
         {
@@ -118,6 +130,7 @@ public static class MfaEndpoints
         [FromBody] MfaActivateRequest request,
         ISqlConnectionFactory connectionFactory,
         RecoveryCodeService recoveryCodeService,
+        IHostEnvironment environment,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -152,6 +165,28 @@ public static class MfaEndpoints
         var isValid = TotpGenerator.ValidateCode(state.MfaSecret, request.TotpCode.Trim(), now);
         if (!isValid)
         {
+            object errorPayload;
+
+            if (environment.IsDevelopment())
+            {
+                errorPayload = new
+                {
+                    message = "Invalid TOTP code.",
+                    serverTimeUtc = now,
+                    expectedCodes = Enumerable.Range(-2, 5)
+                        .Select(drift => new
+                        {
+                            drift,
+                            code = TotpGenerator.GenerateCode(state.MfaSecret, now.AddSeconds(drift * 30))
+                        })
+                        .ToArray()
+                };
+            }
+            else
+            {
+                errorPayload = new { message = "Invalid TOTP code." };
+            }
+
             await InsertAuditAsync(connection, new MfaAuditLogEntry
             {
                 UserId = userId,
@@ -164,7 +199,7 @@ public static class MfaEndpoints
                 CreatedAt = now
             }, cancellationToken);
 
-            return Results.BadRequest(new { message = "Invalid TOTP code." });
+            return Results.BadRequest(errorPayload);
         }
 
         var recoveryCodes = recoveryCodeService.GenerateCodes();

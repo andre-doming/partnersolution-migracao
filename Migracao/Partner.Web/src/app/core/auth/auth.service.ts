@@ -94,12 +94,11 @@ export class AuthService {
   }
 
   private handleLoginResponse(response: LoginResponse): void {
-    if (response.status === 'LOGIN_SUCCESS' && response.accessToken) {
+    if (response.accessToken) {
       localStorage.setItem(this.tokenStorageKey, response.accessToken);
       if (response.name) {
         localStorage.setItem(this.userNameStorageKey, response.name);
       }
-      return;
     }
 
     if (response.pendingToken) {
