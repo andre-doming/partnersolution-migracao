@@ -40,6 +40,14 @@ public sealed class UserListItemResponse
     public bool IsAdmin { get; init; }
     public bool IsActive { get; init; }
     public bool AccessToken { get; init; }
+    public bool? MfaEnabled { get; init; }
+    public DateTime? MfaConfiguredAt { get; init; }
+    public DateTime? LastSuccessfulMfaAt { get; init; }
+    public bool? MfaResetRequired { get; init; }
+    public int? FailedPasswordAttempts { get; init; }
+    public DateTime? PasswordLockoutUntil { get; init; }
+    public int? FailedMfaAttempts { get; init; }
+    public DateTime? MfaLockoutUntil { get; init; }
     public IReadOnlyCollection<int> CompanyIds { get; set; } = [];
     public IReadOnlyCollection<string> Permissions { get; set; } = [];
 }
@@ -86,6 +94,14 @@ internal sealed class UserListRow
     public bool IsAdmin { get; init; }
     public bool IsActive { get; init; }
     public bool AccessToken { get; init; }
+    public bool? MfaEnabled { get; init; }
+    public DateTime? MfaConfiguredAt { get; init; }
+    public DateTime? LastSuccessfulMfaAt { get; init; }
+    public bool? MfaResetRequired { get; init; }
+    public int? FailedPasswordAttempts { get; init; }
+    public DateTime? PasswordLockoutUntil { get; init; }
+    public int? FailedMfaAttempts { get; init; }
+    public DateTime? MfaLockoutUntil { get; init; }
 }
 
 internal sealed class UserDetailRow
@@ -111,4 +127,5 @@ internal sealed class UserPermissionLinkRow
     public int UserId { get; init; }
     public string Code { get; init; } = string.Empty;
 }
+
 

@@ -15,6 +15,14 @@ export interface UserListItem {
   isAdmin: boolean;
   isActive: boolean;
   accessToken: boolean;
+  mfaEnabled?: boolean | null;
+  mfaConfiguredAt?: string | null;
+  lastSuccessfulMfaAt?: string | null;
+  mfaResetRequired?: boolean | null;
+  failedPasswordAttempts?: number | null;
+  passwordLockoutUntil?: string | null;
+  failedMfaAttempts?: number | null;
+  mfaLockoutUntil?: string | null;
   companyIds: number[];
   permissions: string[];
 }
@@ -66,4 +74,5 @@ export interface UserLookupResponse {
   companies: UserCompanyLookupItem[];
   functions: UserFunctionLookupItem[];
 }
+
 

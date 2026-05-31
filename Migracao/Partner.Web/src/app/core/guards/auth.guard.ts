@@ -10,6 +10,10 @@ export const authGuard: CanActivateFn = () => {
     return true;
   }
 
+  if (authService.getPendingToken()) {
+    return router.createUrlTree(['/mfa']);
+  }
+
   return router.createUrlTree(['/login']);
 };
 
@@ -19,6 +23,10 @@ export const loginRedirectGuard: CanActivateFn = () => {
 
   if (authService.isAuthenticated()) {
     return router.createUrlTree(['/']);
+  }
+
+  if (authService.getPendingToken()) {
+    return router.createUrlTree(['/mfa']);
   }
 
   return true;

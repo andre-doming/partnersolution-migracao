@@ -4,6 +4,8 @@ MFA V1 - Partner Solution
 Google Authenticator / Microsoft Authenticator / FortiToken
 ==========================================================
 */
+use db_partner
+go
 
 SET NOCOUNT ON;
 GO

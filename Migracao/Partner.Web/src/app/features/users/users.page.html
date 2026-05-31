@@ -70,6 +70,26 @@
           <td mat-cell *matCellDef="let item">{{ item.email }}</td>
         </ng-container>
 
+        <ng-container matColumnDef="mfa">
+          <th mat-header-cell *matHeaderCellDef>MFA</th>
+          <td mat-cell *matCellDef="let item">{{ resolveMfaStatus(item) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="mfaConfigured">
+          <th mat-header-cell *matHeaderCellDef>MFA Configurado Em</th>
+          <td mat-cell *matCellDef="let item">{{ formatDate(item.mfaConfiguredAt) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="lastMfa">
+          <th mat-header-cell *matHeaderCellDef>Último MFA</th>
+          <td mat-cell *matCellDef="let item">{{ formatDate(item.lastSuccessfulMfaAt) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="blocked">
+          <th mat-header-cell *matHeaderCellDef>Bloqueado</th>
+          <td mat-cell *matCellDef="let item">{{ resolveBlockedStatus(item) }}</td>
+        </ng-container>
+
         <ng-container matColumnDef="active">
           <th mat-header-cell *matHeaderCellDef>Status</th>
           <td mat-cell *matCellDef="let item">{{ item.isActive ? 'Ativo' : 'Inativo' }}</td>
@@ -86,6 +106,14 @@
             @if (canUpdate) {
               <button mat-icon-button type="button" (click)="openEditDialog(item.id)" aria-label="Editar usuário">
                 <mat-icon>edit</mat-icon>
+              </button>
+            }
+            @if (canManageMfa) {
+              <button mat-icon-button type="button" (click)="resetMfa(item)" aria-label="Resetar MFA">
+                <mat-icon>restart_alt</mat-icon>
+              </button>
+              <button mat-icon-button type="button" (click)="unlockUser(item)" aria-label="Desbloquear usuário">
+                <mat-icon>lock_open</mat-icon>
               </button>
             }
             @if (canDelete) {
@@ -110,4 +138,5 @@
     </mat-paginator>
   </mat-card-content>
 </mat-card>
+
 

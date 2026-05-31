@@ -1,0 +1,27 @@
+<section class="mfa-page">
+  <mat-card class="mfa-card">
+    <h1>Verificação MFA</h1>
+
+    <p class="subtitle">Informe o código do aplicativo autenticador ou um recovery code.</p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="challenge-form">
+      <mat-form-field appearance="outline">
+        <mat-label>Código TOTP</mat-label>
+        <input matInput formControlName="totpCode" autocomplete="one-time-code" />
+      </mat-form-field>
+
+      <div class="divider">ou</div>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Recovery code</mat-label>
+        <input matInput formControlName="recoveryCode" />
+      </mat-form-field>
+
+      <button mat-flat-button color="primary" type="submit" [disabled]="isLoading">
+        {{ isLoading ? 'Validando...' : 'Validar MFA' }}
+      </button>
+
+      <button mat-button type="button" (click)="backToLogin()">Voltar ao login</button>
+    </form>
+  </mat-card>
+</section>

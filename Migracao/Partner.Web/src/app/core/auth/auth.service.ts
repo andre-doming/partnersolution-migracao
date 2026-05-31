@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { map, tap } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 import { API_CONFIG } from '../config/api.config';
+import { LoginResponse, MfaVerifyResponse } from '../../features/auth/mfa/mfa.models';
 
 export interface JwtClaims {
   userId?: string;
@@ -19,33 +20,42 @@ export interface LoginPayload {
   password: string;
 }
 
-interface LoginResponse {
-  accessToken: string;
-  expiresAtUtc: string;
-  name: string;
-}
-
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly tokenStorageKey = 'partner.token';
   private readonly userNameStorageKey = 'partner.userName';
+  private readonly pendingTokenStorageKey = 'partner.mfa.pendingToken';
 
-  login(payload: LoginPayload): Observable<void> {
+  login(payload: LoginPayload): Observable<LoginResponse> {
     return this.http
       .post<LoginResponse>(`${API_CONFIG.baseUrl}/auth/login`, payload)
-      .pipe(
-        tap((response) => {
-          localStorage.setItem(this.tokenStorageKey, response.accessToken);
-          localStorage.setItem(this.userNameStorageKey, response.name);
-        }),
-        map(() => undefined)
-      );
+      .pipe(tap((response) => this.handleLoginResponse(response)));
+  }
+
+  completeLogin(response: MfaVerifyResponse): void {
+    localStorage.setItem(this.tokenStorageKey, response.accessToken);
+    if (response.name) {
+      localStorage.setItem(this.userNameStorageKey, response.name);
+    }
   }
 
   logout(): void {
     localStorage.removeItem(this.tokenStorageKey);
     localStorage.removeItem(this.userNameStorageKey);
+    localStorage.removeItem(this.pendingTokenStorageKey);
+  }
+
+  setPendingToken(token: string): void {
+    localStorage.setItem(this.pendingTokenStorageKey, token);
+  }
+
+  getPendingToken(): string | null {
+    return localStorage.getItem(this.pendingTokenStorageKey);
+  }
+
+  clearPendingToken(): void {
+    localStorage.removeItem(this.pendingTokenStorageKey);
   }
 
   isAuthenticated(): boolean {
@@ -81,6 +91,20 @@ export class AuthService {
 
     const fromToken = this.getClaims()?.name;
     return fromToken && fromToken.trim().length > 0 ? fromToken : 'Administrador';
+  }
+
+  private handleLoginResponse(response: LoginResponse): void {
+    if (response.status === 'LOGIN_SUCCESS' && response.accessToken) {
+      localStorage.setItem(this.tokenStorageKey, response.accessToken);
+      if (response.name) {
+        localStorage.setItem(this.userNameStorageKey, response.name);
+      }
+      return;
+    }
+
+    if (response.pendingToken) {
+      this.setPendingToken(response.pendingToken);
+    }
   }
 
   getClaims(): JwtClaims | null {

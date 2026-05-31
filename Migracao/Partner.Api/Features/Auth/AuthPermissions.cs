@@ -6,6 +6,7 @@ public static class AuthPermissions
     public const string UsersInsert = "funcUsuariosIns";
     public const string UsersUpdate = "funcUsuariosUpd";
     public const string UsersDelete = "funcUsuariosDel";
+    public const string UsersMfaAdmin = "funcUsuariosMfaAdmin";
 
     public const string CompaniesView = "funcEmpresas";
     public const string CompaniesInsert = "funcEmpresasIns";
@@ -19,4 +20,5 @@ public static class AuthPermissions
 
     public const string Import = "funcImportar";
 }
+
 

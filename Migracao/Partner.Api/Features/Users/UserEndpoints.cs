@@ -2,9 +2,11 @@ using Dapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Partner.Api.Features.Auth;
+using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
 using Partner.Api.Shared.Security;
+using Partner.Api.Middleware;
 using System.Data;
 
 namespace Partner.Api.Features.Users;
@@ -51,6 +53,18 @@ public static class UserEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapPost("/{id:int}/mfa/reset", ResetMfaAsync)
+            .RequireAuthorization(AuthPolicies.UsersMfaAdmin)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:int}/mfa/unlock", UnlockUserAsync)
+            .RequireAuthorization(AuthPolicies.UsersMfaAdmin)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 
@@ -58,6 +72,7 @@ public static class UserEndpoints
         [AsParameters] UserListRequest request,
         IValidator<UserListRequest> validator,
         ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var validation = await validator.ValidateAsync(request, cancellationToken);
@@ -93,6 +108,8 @@ public static class UserEndpoints
         var total = await connection.ExecuteScalarAsync<int>(
             new CommandDefinition(countSql, parameters, cancellationToken: cancellationToken));
 
+        var isMfaAdmin = HasMfaAdminPermission(httpContext.User);
+
         var resultItems = items.Select(x => new UserListItemResponse
         {
             Id = x.Id,
@@ -101,7 +118,15 @@ public static class UserEndpoints
             Email = x.Email,
             IsAdmin = x.IsAdmin,
             IsActive = x.IsActive,
-            AccessToken = x.AccessToken
+            AccessToken = x.AccessToken,
+            MfaEnabled = isMfaAdmin ? x.MfaEnabled : null,
+            MfaConfiguredAt = isMfaAdmin ? x.MfaConfiguredAt : null,
+            LastSuccessfulMfaAt = isMfaAdmin ? x.LastSuccessfulMfaAt : null,
+            MfaResetRequired = isMfaAdmin ? x.MfaResetRequired : null,
+            FailedPasswordAttempts = isMfaAdmin ? x.FailedPasswordAttempts : null,
+            PasswordLockoutUntil = isMfaAdmin ? x.PasswordLockoutUntil : null,
+            FailedMfaAttempts = isMfaAdmin ? x.FailedMfaAttempts : null,
+            MfaLockoutUntil = isMfaAdmin ? x.MfaLockoutUntil : null
         }).ToList();
 
         if (resultItems.Count > 0)
@@ -316,6 +341,129 @@ public static class UserEndpoints
         return Results.NoContent();
     }
 
+    private static async Task<IResult> ResetMfaAsync(
+        [FromRoute] int id,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var actorId = ResolveActorUserId(httpContext.User);
+
+        if (actorId == id)
+        {
+            return Results.BadRequest(new { message = "Não é permitido resetar o próprio MFA." });
+        }
+
+        using var connection = connectionFactory.CreateConnection();
+
+        var exists = await connection.ExecuteScalarAsync<int>(
+            new CommandDefinition(UserQueries.CountBase + " AND u.id = @Id;", new { Id = id }, cancellationToken: cancellationToken));
+
+        if (exists == 0)
+        {
+            return Results.NotFound();
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.EnsureMfaRowForUser,
+            new { UserId = id },
+            cancellationToken: cancellationToken));
+
+        var now = DateTime.UtcNow;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.AdminResetMfa,
+            new { UserId = id, UpdatedAt = now },
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.DeleteRecoveryCodesByUser,
+            new { UserId = id },
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.DeletePendingSessionsByUser,
+            new { UserId = id },
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.InsertAuditLog,
+            new
+            {
+                UserId = id,
+                ActorUserId = actorId,
+                EventType = "ADMIN_MFA_RESET",
+                EventDescription = "Administrative MFA reset",
+                CorrelationId = CorrelationIdMiddleware.GetCorrelationId(httpContext),
+                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = httpContext.Request.Headers.UserAgent.ToString(),
+                MetadataJson = (string?)null,
+                CreatedAt = now
+            },
+            cancellationToken: cancellationToken));
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> UnlockUserAsync(
+        [FromRoute] int id,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var actorId = ResolveActorUserId(httpContext.User);
+
+        if (actorId == id)
+        {
+            return Results.BadRequest(new { message = "Não é permitido desbloquear o próprio usuário." });
+        }
+
+        using var connection = connectionFactory.CreateConnection();
+
+        var exists = await connection.ExecuteScalarAsync<int>(
+            new CommandDefinition(UserQueries.CountBase + " AND u.id = @Id;", new { Id = id }, cancellationToken: cancellationToken));
+
+        if (exists == 0)
+        {
+            return Results.NotFound();
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.EnsureMfaRowForUser,
+            new { UserId = id },
+            cancellationToken: cancellationToken));
+
+        var now = DateTime.UtcNow;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.ResetPasswordLockout,
+            new { UserId = id, UpdatedAt = now },
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.ResetMfaLockout,
+            new { UserId = id, UpdatedAt = now },
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.InsertAuditLog,
+            new
+            {
+                UserId = id,
+                ActorUserId = actorId,
+                EventType = "ADMIN_USER_UNLOCK",
+                EventDescription = "Administrative user unlock",
+                CorrelationId = CorrelationIdMiddleware.GetCorrelationId(httpContext),
+                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = httpContext.Request.Headers.UserAgent.ToString(),
+                MetadataJson = (string?)null,
+                CreatedAt = now
+            },
+            cancellationToken: cancellationToken));
+
+        return Results.NoContent();
+    }
+
     private static string BuildWhereClause(UserListRequest request, out DynamicParameters parameters)
     {
         parameters = new DynamicParameters();
@@ -459,5 +607,20 @@ public static class UserEndpoints
         }
 
         return id;
+    }
+
+    private static bool HasMfaAdminPermission(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var isAdmin = user.Claims.Any(c =>
+            c.Type == PartnerClaimTypes.Admin &&
+            string.Equals(c.Value, "true", StringComparison.OrdinalIgnoreCase));
+
+        if (isAdmin)
+        {
+            return true;
+        }
+
+        return user.Claims.Any(c => c.Type == PartnerClaimTypes.Permissions
+            && string.Equals(c.Value, AuthPermissions.UsersMfaAdmin, StringComparison.OrdinalIgnoreCase));
     }
 }

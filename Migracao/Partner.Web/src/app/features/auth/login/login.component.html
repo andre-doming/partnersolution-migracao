@@ -15,7 +15,7 @@
       </mat-form-field>
 
       <button mat-flat-button color="primary" class="submit-btn" type="submit" [disabled]="isLoading">
-        Entrar
+        {{ isLoading ? 'Entrando...' : 'Entrar' }}
       </button>
 
       <button mat-button type="button" class="recovery-btn">Recuperar senha</button>

@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Partner.Api.Features.Auth;
+using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Security;
 using System.Security.Claims;
@@ -17,6 +18,8 @@ public static class ServiceCollectionExtensions
         EnsureConnectionStringConfigurationIsSafe(partnerDbConnectionString);
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
+        services.Configure<PasswordLockoutOptions>(configuration.GetSection(PasswordLockoutOptions.SectionName));
 
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         EnsureJwtConfigurationIsSafe(jwtOptions, environment);
@@ -52,6 +55,9 @@ public static class ServiceCollectionExtensions
 
             options.AddPolicy(AuthPolicies.UsersDelete, policy =>
                 policy.RequireAssertion(context => HasAdminOrPermission(context.User, AuthPermissions.UsersDelete)));
+
+            options.AddPolicy(AuthPolicies.UsersMfaAdmin, policy =>
+                policy.RequireAssertion(context => HasAdminOrPermission(context.User, AuthPermissions.UsersMfaAdmin)));
 
             options.AddPolicy(AuthPolicies.Companies, policy =>
                 policy.RequireAssertion(context => HasAdminOrPermission(context.User, AuthPermissions.CompaniesView)));
@@ -107,6 +113,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<RecoveryCodeService>();
+        services.AddScoped<PendingTokenService>();
         services.AddValidatorsFromAssemblyContaining<AuthLoginRequestValidator>(ServiceLifetime.Scoped, includeInternalTypes: true);
 
         return services;

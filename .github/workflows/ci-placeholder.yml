@@ -1,0 +1,11 @@
+name: CI Placeholder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: echo "Pipeline CI/CD oficial ainda não definido nesta fase."

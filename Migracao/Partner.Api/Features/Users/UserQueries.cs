@@ -10,8 +10,17 @@ public static class UserQueries
             u.email AS Email,
             CASE WHEN u.admin = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsAdmin,
             CASE WHEN u.ativo = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsActive,
-            CASE WHEN u.acesso_token = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS AccessToken
+            CASE WHEN u.acesso_token = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS AccessToken,
+            m.MfaEnabled AS MfaEnabled,
+            m.MfaConfiguredAt AS MfaConfiguredAt,
+            m.LastSuccessfulMfaAt AS LastSuccessfulMfaAt,
+            m.MfaResetRequired AS MfaResetRequired,
+            m.FailedPasswordAttempts AS FailedPasswordAttempts,
+            m.PasswordLockoutUntil AS PasswordLockoutUntil,
+            m.FailedMfaAttempts AS FailedMfaAttempts,
+            m.MfaLockoutUntil AS MfaLockoutUntil
         FROM tb_usuario u
+        LEFT JOIN dbo.tb_usuario_mfa m ON m.UserId = u.id
         WHERE 1 = 1
         """;
 
@@ -175,4 +184,5 @@ public static class UserQueries
         ORDER BY f.nome_funcao;
         """;
 }
+
 

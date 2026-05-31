@@ -3,6 +3,7 @@ export const AUTH_PERMISSIONS = {
   usersInsert: 'funcUsuariosIns',
   usersUpdate: 'funcUsuariosUpd',
   usersDelete: 'funcUsuariosDel',
+  usersMfaAdmin: 'funcUsuariosMfaAdmin',
   companiesView: 'funcEmpresas',
   companiesInsert: 'funcEmpresasIns',
   companiesUpdate: 'funcEmpresasUpd',
@@ -13,4 +14,5 @@ export const AUTH_PERMISSIONS = {
   clientsDelete: 'funcClientesDel',
   import: 'funcImportar'
 } as const;
+
 

@@ -52,8 +52,17 @@ export class UsersService {
     return this.http.put<void>(`${this.baseUrl}/${id}`, payload);
   }
 
+  resetMfa(id: number): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/${id}/mfa/reset`, {});
+  }
+
+  unlockUser(id: number): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/${id}/mfa/unlock`, {});
+  }
+
   remove(id: number): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${id}`);
   }
 }
+
 

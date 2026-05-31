@@ -71,7 +71,7 @@ export class UsersPageComponent implements OnInit {
   functions: UserFunctionLookupItem[] = [];
   items: UserListItem[] = [];
 
-  readonly displayedColumns = ['name', 'login', 'email', 'active', 'admin', 'actions'];
+  readonly displayedColumns = ['name', 'login', 'email', 'mfa', 'mfaConfigured', 'lastMfa', 'blocked', 'active', 'admin', 'actions'];
 
   readonly filterForm = this.fb.group({
     field: this.fb.nonNullable.control<string>('name'),
@@ -95,6 +95,10 @@ export class UsersPageComponent implements OnInit {
 
   get canDelete(): boolean {
     return this.authService.hasPermission(AUTH_PERMISSIONS.usersDelete);
+  }
+
+  get canManageMfa(): boolean {
+    return this.authService.hasPermission(AUTH_PERMISSIONS.usersMfaAdmin);
   }
 
   onSearch(): void {
@@ -184,6 +188,88 @@ export class UsersPageComponent implements OnInit {
     });
   }
 
+  resetMfa(item: UserListItem): void {
+    if (!this.canManageMfa) {
+      return;
+    }
+
+    if (!confirm(`Deseja resetar o MFA de ${item.name}?`)) {
+      return;
+    }
+
+    this.usersService.resetMfa(item.id).subscribe({
+      next: () => {
+        this.snackBar.open('Reset MFA realizado com sucesso. Usuário deverá configurar MFA novamente no próximo login.', 'Fechar', {
+          duration: 5000
+        });
+        this.loadUsers();
+      },
+      error: (error) => {
+        const message = error?.error?.message ?? 'Erro ao resetar MFA.';
+        this.snackBar.open(message, 'Fechar', { duration: 4000 });
+      }
+    });
+  }
+
+  unlockUser(item: UserListItem): void {
+    if (!this.canManageMfa) {
+      return;
+    }
+
+    if (!confirm(`Deseja desbloquear o usuário ${item.name}?`)) {
+      return;
+    }
+
+    this.usersService.unlockUser(item.id).subscribe({
+      next: () => {
+        this.snackBar.open('Usuário desbloqueado com sucesso.', 'Fechar', { duration: 4000 });
+        this.loadUsers();
+      },
+      error: (error) => {
+        const message = error?.error?.message ?? 'Erro ao desbloquear usuário.';
+        this.snackBar.open(message, 'Fechar', { duration: 4000 });
+      }
+    });
+  }
+
+  formatDate(value?: string | null): string {
+    if (!value) {
+      return '-';
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return '-';
+    }
+
+    return parsed.toLocaleString('pt-BR');
+  }
+
+  resolveMfaStatus(item: UserListItem): string {
+    if (!this.canManageMfa || item.mfaEnabled == null) {
+      return '-';
+    }
+
+    if (item.mfaResetRequired) {
+      return 'Reset requerido';
+    }
+
+    return item.mfaEnabled ? 'Ativo' : 'Inativo';
+  }
+
+  resolveBlockedStatus(item: UserListItem): string {
+    if (!this.canManageMfa) {
+      return '-';
+    }
+
+    const now = new Date();
+    const passwordLock = item.passwordLockoutUntil ? new Date(item.passwordLockoutUntil) : null;
+    const mfaLock = item.mfaLockoutUntil ? new Date(item.mfaLockoutUntil) : null;
+    const isBlocked = (!!passwordLock && passwordLock > now) || (!!mfaLock && mfaLock > now);
+
+    return isBlocked ? 'Sim' : 'Não';
+  }
+
   private loadLookups(): void {
     this.usersService.getLookups().subscribe({
       next: (response) => {
@@ -218,4 +304,5 @@ export class UsersPageComponent implements OnInit {
       });
   }
 }
+
 

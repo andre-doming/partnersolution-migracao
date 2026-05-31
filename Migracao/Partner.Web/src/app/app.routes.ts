@@ -6,6 +6,8 @@ import { ShellComponent } from './layout/shell/shell.component';
 import { HomeComponent } from './features/home/home.component';
 import { LoginComponent } from './features/auth/login/login.component';
 import { UsersPageComponent } from './features/users/users.page';
+import { MfaSetupComponent } from './features/auth/mfa/mfa-setup.component';
+import { MfaChallengeComponent } from './features/auth/mfa/mfa-challenge.component';
 import { CompaniesPageComponent } from './features/companies/companies.page';
 import { ClientsPageComponent } from './features/clients/clients.page';
 import { ImportPageComponent } from './features/import/import.page';
@@ -15,6 +17,14 @@ export const routes: Routes = [
     path: 'login',
     canActivate: [loginRedirectGuard],
     component: LoginComponent
+  },
+  {
+    path: 'mfa/setup',
+    component: MfaSetupComponent
+  },
+  {
+    path: 'mfa',
+    component: MfaChallengeComponent
   },
   {
     path: '',

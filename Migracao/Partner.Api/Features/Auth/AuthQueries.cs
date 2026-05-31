@@ -9,9 +9,27 @@ public static class AuthQueries
             u.login          AS Login,
             u.senha          AS PasswordHash,
             CASE WHEN u.admin = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsAdmin,
-            CASE WHEN u.ativo = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsActive
+            CASE WHEN u.ativo = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsActive,
+            m.FailedPasswordAttempts AS FailedPasswordAttempts,
+            m.PasswordLockoutUntil AS PasswordLockoutUntil
         FROM tb_usuario u
+        LEFT JOIN dbo.tb_usuario_mfa m ON m.UserId = u.id
         WHERE u.login = @Login;
+        """;
+
+    public const string GetUserById = """
+        SELECT
+            u.id             AS Id,
+            u.nome           AS Name,
+            u.login          AS Login,
+            u.senha          AS PasswordHash,
+            CASE WHEN u.admin = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsAdmin,
+            CASE WHEN u.ativo = 'S' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS IsActive,
+            m.FailedPasswordAttempts AS FailedPasswordAttempts,
+            m.PasswordLockoutUntil AS PasswordLockoutUntil
+        FROM tb_usuario u
+        LEFT JOIN dbo.tb_usuario_mfa m ON m.UserId = u.id
+        WHERE u.id = @UserId;
         """;
 
     public const string GetPermissionsByUserId = """

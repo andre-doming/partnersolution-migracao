@@ -1,4 +1,5 @@
 using Partner.Api.Features.Auth;
+using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Features.Clients;
 using Partner.Api.Features.Companies;
 using Partner.Api.Features.Import;
@@ -93,6 +94,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     ResponseWriter = HealthResponseWriter.WriteMinimalJsonAsync
 });
 app.MapAuthEndpoints();
+app.MapMfaEndpoints();
 app.MapUserEndpoints();
 app.MapCompanyEndpoints();
 app.MapClientEndpoints();

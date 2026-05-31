@@ -1,0 +1,18 @@
+# Placeholder: docker-compose ainda não definido nesta fase.
+# Este arquivo existe apenas para indicar a intenção de orquestração futura.
+
+services:
+  partner-api:
+    image: placeholder/partner-api
+    build:
+      context: ../Migracao/Partner.Api
+      dockerfile: ../docker/Dockerfile.api
+    ports:
+      - "8080:8080"
+  partner-web:
+    image: placeholder/partner-web
+    build:
+      context: ../Migracao/Partner.Web
+      dockerfile: ../docker/Dockerfile.web
+    ports:
+      - "4200:4200"

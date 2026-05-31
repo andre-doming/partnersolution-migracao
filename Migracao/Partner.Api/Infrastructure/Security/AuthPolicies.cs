@@ -6,6 +6,7 @@ public static class AuthPolicies
     public const string UsersInsert = "UsersInsertPolicy";
     public const string UsersUpdate = "UsersUpdatePolicy";
     public const string UsersDelete = "UsersDeletePolicy";
+    public const string UsersMfaAdmin = "UsersMfaAdminPolicy";
 
     public const string Companies = "CompaniesPolicy";
     public const string CompaniesInsert = "CompaniesInsertPolicy";
@@ -19,4 +20,5 @@ public static class AuthPolicies
 
     public const string Import = "ImportPolicy";
 }
+
 

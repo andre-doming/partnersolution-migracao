@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/auth/auth.service';
+import { LoginResponse } from '../mfa/mfa.models';
 
 @Component({
   selector: 'app-login',
@@ -52,13 +53,49 @@ export class LoginComponent {
       })
       .pipe(finalize(() => (this.isLoading = false)))
       .subscribe({
-        next: () => this.router.navigateByUrl('/'),
-        error: () => {
-          this.snackBar.open('Usuario ou senha invalidos.', 'Fechar', {
+        next: (response) => this.handleLoginResponse(response),
+        error: (error) => {
+          const message = this.resolveLoginError(error);
+          this.snackBar.open(message, 'Fechar', {
             duration: 3000,
             verticalPosition: 'top'
           });
         }
       });
+  }
+
+  private handleLoginResponse(response: LoginResponse): void {
+    if (response.status === 'LOGIN_SUCCESS') {
+      this.router.navigateByUrl('/');
+      return;
+    }
+
+    if (response.status === 'MFA_SETUP_REQUIRED') {
+      this.router.navigateByUrl('/mfa/setup');
+      return;
+    }
+
+    if (response.status === 'MFA_REQUIRED') {
+      this.router.navigateByUrl('/mfa');
+      return;
+    }
+
+    this.snackBar.open('Não foi possível completar o login.', 'Fechar', {
+      duration: 3000,
+      verticalPosition: 'top'
+    });
+  }
+
+  private resolveLoginError(error: any): string {
+    const message = error?.error?.message ?? error?.error?.Message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+
+    if (error?.status === 401) {
+      return 'Usuário ou senha inválidos.';
+    }
+
+    return 'Não foi possível realizar o login.';
   }
 }

@@ -1,0 +1,49 @@
+<section class="mfa-page">
+  <mat-card class="mfa-card">
+    <h1>Configurar MFA</h1>
+
+    <div *ngIf="isLoading" class="loading-state">
+      <mat-progress-spinner mode="indeterminate" diameter="40"></mat-progress-spinner>
+      <p>Carregando configuração...</p>
+    </div>
+
+    <ng-container *ngIf="!isLoading && setupData">
+      <div class="instructions">
+        <p>Abra seu aplicativo autenticador (Google Authenticator, Microsoft Authenticator, FortiToken ou Authy).</p>
+        <p>Escaneie o QR Code abaixo ou informe a chave manual.</p>
+      </div>
+
+      <div class="qr-wrapper">
+        <img [src]="setupData.qrCodeUrl" alt="QR Code MFA" />
+      </div>
+
+      <div class="manual-key">
+        <span>Manual Entry Key</span>
+        <strong>{{ setupData.manualEntryKey }}</strong>
+        <small>Chave mascarada: {{ setupData.maskedSecret }}</small>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="submitActivation()" class="activation-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Código TOTP</mat-label>
+          <input matInput formControlName="totpCode" autocomplete="one-time-code" />
+        </mat-form-field>
+
+        <button mat-flat-button color="primary" type="submit" [disabled]="isActivating">
+          {{ isActivating ? 'Validando...' : 'Ativar MFA' }}
+        </button>
+      </form>
+    </ng-container>
+
+    <section *ngIf="recoveryCodes" class="recovery-section">
+      <h2>Recovery Codes</h2>
+      <p>Guarde estes códigos com segurança. Eles serão exibidos apenas uma vez.</p>
+
+      <div class="codes-grid">
+        <span *ngFor="let code of recoveryCodes">{{ code }}</span>
+      </div>
+
+      <button mat-stroked-button color="primary" (click)="finish()">Finalizar</button>
+    </section>
+  </mat-card>
+</section>
