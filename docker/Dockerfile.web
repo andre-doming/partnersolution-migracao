@@ -1,4 +1,0 @@
-FROM scratch
-
-# Placeholder: Dockerfile oficial do Angular ainda não definido nesta fase.
-# Este arquivo existe apenas para indicar a intenção de containerização futura.

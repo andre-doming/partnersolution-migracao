@@ -20,7 +20,7 @@ public sealed class CorrelationIdMiddleware
         context.Items[ItemKey] = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
 
-        using (LogContext.PushProperty("correlationId", correlationId))
+        using (LogContext.PushProperty("CorrelationId", correlationId))
         {
             await _next(context);
         }
@@ -47,4 +47,5 @@ public sealed class CorrelationIdMiddleware
         return Guid.NewGuid().ToString("N");
     }
 }
+
 

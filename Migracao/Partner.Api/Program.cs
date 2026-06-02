@@ -17,10 +17,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
+    var seqSection = context.Configuration.GetSection("Serilog:Seq");
+    var seqEnabled = seqSection.GetValue("Enabled", false);
+    var seqServerUrl = seqSection.GetValue<string>("ServerUrl");
+    var seqApiKey = seqSection.GetValue<string>("ApiKey");
+
     loggerConfiguration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext();
+
+    if (seqEnabled && !string.IsNullOrWhiteSpace(seqServerUrl))
+    {
+        loggerConfiguration.WriteTo.Seq(seqServerUrl, apiKey: seqApiKey);
+    }
 });
 
 builder.Services.AddPartnerFoundation(builder.Configuration, builder.Environment);
@@ -52,14 +62,14 @@ app.UseSerilogRequestLogging(options =>
         var userId = httpContext.User.FindFirst(PartnerClaimTypes.UserId)?.Value;
         var route = httpContext.GetEndpoint()?.DisplayName ?? httpContext.Request.Path.Value ?? string.Empty;
 
-        diagnosticContext.Set("correlationId", correlationId);
-        diagnosticContext.Set("route", route);
-        diagnosticContext.Set("statusCode", httpContext.Response.StatusCode);
-        diagnosticContext.Set("elapsedMs", RequestMetricsMiddleware.GetElapsedMs(httpContext));
+        diagnosticContext.Set("CorrelationId", correlationId);
+        diagnosticContext.Set("Route", route);
+        diagnosticContext.Set("StatusCode", httpContext.Response.StatusCode);
+        diagnosticContext.Set("ElapsedMs", RequestMetricsMiddleware.GetElapsedMs(httpContext));
 
         if (!string.IsNullOrWhiteSpace(userId))
         {
-            diagnosticContext.Set("userId", userId);
+            diagnosticContext.Set("UserId", userId);
         }
     };
 });
