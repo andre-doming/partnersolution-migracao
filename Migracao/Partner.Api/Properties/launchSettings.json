@@ -21,13 +21,17 @@
     },
     "https": {
       "commandName": "Project",
-      "dotnetRunMessages": true,
       "launchBrowser": true,
       "launchUrl": "swagger",
-      "applicationUrl": "https://localhost:7111;http://localhost:5205",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__PartnerDb": "Server=localhost;UID=usr_partner;PWD=Pass@2026!!!;Database=db_partner;",
+        "Jwt__Issuer": "PartnerApi",
+        "Jwt__Audience": "PartnerClient",
+        "Jwt__SecretKey": "0123456789abcdef0123456789abcdef"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7111;http://localhost:5205"
     },
     "IIS Express": {
       "commandName": "IISExpress",
