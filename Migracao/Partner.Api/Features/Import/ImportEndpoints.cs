@@ -75,6 +75,10 @@ public static class ImportEndpoints
             .Produces<ImportJobErrorsResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/jobs/{jobPublicId:guid}/errors/export", ExportJobErrorsAsync)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapPost("/jobs/{jobPublicId:guid}/cancel", CancelImportJobAsync)
             .Produces<ImportJobActionResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
@@ -1222,6 +1226,93 @@ public static class ImportEndpoints
         });
     }
 
+    private static async Task<IResult> ExportJobErrorsAsync(
+        [FromRoute] Guid jobPublicId,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var job = await connection.QueryFirstOrDefaultAsync<ImportJobRow>(new CommandDefinition(
+            ImportQueries.GetImportJobByPublicId,
+            new { PublicId = jobPublicId },
+            cancellationToken: cancellationToken));
+
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        if (!isAdmin && job.CreatedByUserId != actorUserId)
+        {
+            return Results.NotFound();
+        }
+
+        // Buscar todos os erros (sem paginação)
+        var errors = (await connection.QueryAsync<ImportJobErrorRow>(new CommandDefinition(
+            ImportQueries.GetAllImportErrorsByJobId,
+            new { ImportJobId = job.Id },
+            cancellationToken: cancellationToken))).ToArray();
+
+        if (errors.Length == 0)
+        {
+            // Retornar CSV vazio com só cabeçalho
+            var emptyContent = Encoding.UTF8.GetBytes("Linha;Ação;CPF;Email;Erro\r\n");
+            var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+            var logger = loggerFactory.CreateLogger("ImportErrorsExport");
+            logger.LogInformation(
+                "ImportErrorsExported CorrelationId={CorrelationId} JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} ErrorCount={ErrorCount}",
+                correlationId,
+                job.Id,
+                jobPublicId,
+                actorUserId,
+                0);
+
+            return Results.File(emptyContent, "text/csv", $"erros_{job.FileName}_{jobPublicId:N}.csv");
+        }
+
+        // Gerar CSV com os erros
+        var csv = new StringBuilder();
+        csv.AppendLine("Linha;Ação;CPF;Email;Erro");
+
+        foreach (var error in errors)
+        {
+            var linha = error.LineNumber;
+            var acao = error.Action ?? string.Empty;
+            var cpf = error.Document ?? string.Empty;
+            var email = error.Email ?? string.Empty;
+            var erro = error.Message ?? string.Empty;
+
+            // Escapar aspas duplas nos campos
+            acao = EscapeCsvField(acao);
+            cpf = EscapeCsvField(cpf);
+            email = EscapeCsvField(email);
+            erro = EscapeCsvField(erro);
+
+            csv.AppendLine($"{linha};{acao};{cpf};{email};{erro}");
+        }
+
+        var content = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        
+        var corId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+        var log = loggerFactory.CreateLogger("ImportErrorsExport");
+        log.LogInformation(
+            "ImportErrorsExported CorrelationId={CorrelationId} JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} ErrorCount={ErrorCount}",
+            corId,
+            job.Id,
+            jobPublicId,
+            actorUserId,
+            errors.Length);
+
+        return Results.File(content, "text/csv; charset=utf-8", $"erros_{job.FileName}_{jobPublicId:N}.csv");
+    }
+
     private static async Task<IResult> CancelImportJobAsync(
         [FromRoute] Guid jobPublicId,
         ISqlConnectionFactory connectionFactory,
@@ -1838,5 +1929,22 @@ public static class ImportEndpoints
                 $"A importação do arquivo {fileName} foi cancelada."),
             _ => null
         };
+    }
+
+    private static string EscapeCsvField(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+
+        // Se contém ponto-e-vírgula, aspas duplas ou quebra de linha, envolver em aspas
+        if (value.Contains(';') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            // Escapar aspas duplas duplicando-as
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+
+        return value;
     }
 }

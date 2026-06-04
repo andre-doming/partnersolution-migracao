@@ -294,12 +294,34 @@ export class ImportPageComponent implements OnInit, OnDestroy {
     this.loadJobErrors(job.jobPublicId);
   }
 
-  clearSelection(): void {
-    this.selectedJob = null;
-    this.selectedJobErrors = null;
-  }
+   clearSelection(): void {
+     this.selectedJob = null;
+     this.selectedJobErrors = null;
+   }
 
-  isTerminal(status: string): boolean {
+   downloadErrors(): void {
+     if (!this.selectedJob || this.selectedJob.errorRows === 0) {
+       this.snackBar.open('Nenhum erro disponível para download.', 'Fechar', { duration: 3000 });
+       return;
+     }
+
+     this.importService.exportJobErrors(this.selectedJob.jobPublicId).subscribe({
+       next: (blob) => {
+         const url = window.URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = url;
+         a.download = `erros_${this.selectedJob?.fileName}_${this.selectedJob?.jobPublicId}.csv`;
+         document.body.appendChild(a);
+         a.click();
+         document.body.removeChild(a);
+         window.URL.revokeObjectURL(url);
+         this.snackBar.open('Arquivo de erros baixado com sucesso.', 'Fechar', { duration: 3000 });
+       },
+       error: () => this.snackBar.open('Erro ao baixar arquivo de erros.', 'Fechar', { duration: 3500 })
+     });
+   }
+
+   isTerminal(status: string): boolean {
     return ['Completed', 'CompletedWithErrors', 'Failed', 'Cancelled'].includes(status);
   }
 

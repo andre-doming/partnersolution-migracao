@@ -87,6 +87,12 @@ export class ImportService {
   markAllNotificationsRead(): Observable<void> {
     return this.http.post<void>(`${this.baseUrl}/notifications/read-all`, {});
   }
+
+  exportJobErrors(jobPublicId: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/jobs/${jobPublicId}/errors/export`, {
+      responseType: 'blob'
+    });
+  }
 }
 
 

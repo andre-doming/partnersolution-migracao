@@ -300,6 +300,12 @@
             </mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
+            <div class="actions-bar" *ngIf="selectedJob && selectedJob.errorRows > 0">
+              <button mat-raised-button color="primary" (click)="downloadErrors()">
+                <mat-icon>download</mat-icon>
+                Baixar erros
+              </button>
+            </div>
             <div class="table-wrapper">
               <table mat-table [dataSource]="selectedJobErrors?.items ?? []" class="mat-elevation-z2">
                 <ng-container matColumnDef="lineNumber">

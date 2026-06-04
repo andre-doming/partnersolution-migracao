@@ -547,5 +547,21 @@ public static class ImportQueries
         FROM dbo.ImportJobs j
         WHERE j.public_id = @PublicId;
         """;
+
+    public const string GetAllImportErrorsByJobId = """
+        SELECT
+            e.seq AS Seq,
+            e.line_number AS LineNumber,
+            e.error_code AS ErrorCode,
+            e.message AS Message,
+            e.raw_line AS RawLine,
+            e.action AS Action,
+            e.document AS Document,
+            e.email AS Email,
+            e.created_at_utc AS CreatedAtUtc
+        FROM dbo.ImportJobErrors e
+        WHERE e.import_job_id = @ImportJobId
+        ORDER BY e.seq ASC;
+        """;
 }
 
