@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
         services.Configure<PasswordLockoutOptions>(configuration.GetSection(PasswordLockoutOptions.SectionName));
+        services.Configure<CpfOptions>(configuration.GetSection("Cpf"));
         services.Configure<ImportRabbitMqOptions>(configuration.GetSection(ImportRabbitMqOptions.SectionName));
         services.Configure<ImportStorageOptions>(configuration.GetSection(ImportStorageOptions.SectionName));
         services.Configure<VtexOptions>(configuration.GetSection(VtexOptions.SectionName));
@@ -244,6 +245,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<ICpfProtectionService, CpfProtectionService>();
         services.AddScoped<RecoveryCodeService>();
         services.AddScoped<PendingTokenService>();
         services.AddSingleton<RateLimitingMetrics>();

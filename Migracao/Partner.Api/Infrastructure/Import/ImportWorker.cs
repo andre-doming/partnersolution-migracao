@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Dapper;
 using FluentValidation;
 using Partner.Api.Features.Import;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Integrations.Vtex;
+using Partner.Api.Infrastructure.Security;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -20,6 +20,7 @@ public sealed class ImportWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ImportWorker> _logger;
     private readonly IHostEnvironment _hostEnvironment;
+    private readonly ICpfProtectionService _cpfService;
 
     private const int ProgressBatchSize = 20;
 
@@ -31,13 +32,15 @@ public sealed class ImportWorker : BackgroundService
         IOptions<ImportRabbitMqOptions> options,
         IServiceScopeFactory scopeFactory,
         IHostEnvironment hostEnvironment,
-        ILogger<ImportWorker> logger)
+        ILogger<ImportWorker> logger,
+        ICpfProtectionService cpfService)
     {
         _connectionFactory = connectionFactory;
         _options = options.Value;
         _scopeFactory = scopeFactory;
         _hostEnvironment = hostEnvironment;
         _logger = logger;
+        _cpfService = cpfService;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -502,7 +505,7 @@ public sealed class ImportWorker : BackgroundService
                 job.PublicId,
                 job.Feature,
                 data.LineNumber,
-                MaskDocument(data.Document),
+                _cpfService.Mask(data.Document),
                 correlationId);
         }
     }
@@ -565,13 +568,13 @@ public sealed class ImportWorker : BackgroundService
                 }));
         }
 
-        _logger.LogWarning(exception,
+         _logger.LogWarning(exception,
             "ImportRowFailed JobId={JobId} JobPublicId={JobPublicId} Feature={Feature} LineNumber={LineNumber} Document={Document} CorrelationId={CorrelationId}",
             job.Id,
             job.PublicId,
             job.Feature,
             lineNumber,
-            MaskDocument(parsed?.Document ?? string.Empty),
+            _cpfService.Mask(parsed?.Document ?? string.Empty),
             correlationId);
     }
 
@@ -715,7 +718,7 @@ public sealed class ImportWorker : BackgroundService
         CsvImportLineData data,
         CancellationToken cancellationToken)
     {
-        ValidateLineRules(data);
+        // ValidateLineRules(data); // Comentado - será substituído por this.ValidateLineRules na implementação de instância
 
         var existing = await connection.QueryFirstOrDefaultAsync<ImportExistingClientRow>(new CommandDefinition(
             ImportQueries.FindActiveClientByDocumentOrEmail,
@@ -788,7 +791,7 @@ public sealed class ImportWorker : BackgroundService
         throw new ValidationException("Unsupported action.");
     }
 
-    private static void ValidateLineRules(CsvImportLineData data)
+    private void ValidateLineRules(CsvImportLineData data)
     {
         if (string.IsNullOrWhiteSpace(data.FirstName))
         {
@@ -805,12 +808,12 @@ public sealed class ImportWorker : BackgroundService
             throw new ValidationException("CPF must contain 11 digits.");
         }
 
-        if (!IsValidCpf(data.Document))
+        if (!_cpfService.Validate(data.Document))
         {
             throw new ValidationException("CPF is invalid.");
         }
 
-        if (!string.IsNullOrWhiteSpace(data.Email) && !Regex.IsMatch(data.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase))
+        if (!string.IsNullOrWhiteSpace(data.Email) && !System.Text.RegularExpressions.Regex.IsMatch(data.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
         {
             throw new ValidationException("E-mail is invalid.");
         }
@@ -937,58 +940,6 @@ public sealed class ImportWorker : BackgroundService
             : data.Department;
 
         return NormalizeText(candidate, 1);
-    }
-
-    private static bool IsValidCpf(string cpf)
-    {
-        if (cpf.Length != 11)
-        {
-            return false;
-        }
-
-        if (cpf.Distinct().Count() == 1)
-        {
-            return false;
-        }
-
-        var numbers = cpf.Select(c => c - '0').ToArray();
-        var sum = 0;
-        for (var i = 0; i < 9; i++)
-        {
-            sum += numbers[i] * (10 - i);
-        }
-
-        var remainder = sum % 11;
-        var digit1 = remainder < 2 ? 0 : 11 - remainder;
-        if (numbers[9] != digit1)
-        {
-            return false;
-        }
-
-        sum = 0;
-        for (var i = 0; i < 10; i++)
-        {
-            sum += numbers[i] * (11 - i);
-        }
-
-        remainder = sum % 11;
-        var digit2 = remainder < 2 ? 0 : 11 - remainder;
-        return numbers[10] == digit2;
-    }
-
-    private static string MaskDocument(string document)
-    {
-        if (string.IsNullOrWhiteSpace(document))
-        {
-            return string.Empty;
-        }
-
-        if (document.Length <= 4)
-        {
-            return new string('*', document.Length);
-        }
-
-        return new string('*', document.Length - 4) + document[^4..];
     }
 
     private static string ComputeSha256(string input)

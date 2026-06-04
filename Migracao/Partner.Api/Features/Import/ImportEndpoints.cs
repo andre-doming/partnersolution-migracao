@@ -371,6 +371,7 @@ public static class ImportEndpoints
     private static async Task<IResult> ImportClientsCsvAsync(
         HttpContext httpContext,
         ISqlConnectionFactory connectionFactory,
+        ICpfProtectionService cpfService,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -513,7 +514,7 @@ public static class ImportEndpoints
                 try
                 {
                     var data = ParseLine(lineNumber, line);
-                    await ProcessLineAsync(connection, companyMap, data, cancellationToken);
+                    await ProcessLineAsync(connection, companyMap, data, cpfService, cancellationToken);
                     successRows++;
                 }
                 catch (Exception exception)
@@ -537,7 +538,7 @@ public static class ImportEndpoints
                         actorUserId,
                         lineNumber,
                         error.Action,
-                        MaskDocument(error.Document ?? string.Empty),
+                        cpfService.Mask(error.Document ?? string.Empty),
                         error.Email,
                         correlationId);
                 }
@@ -718,6 +719,7 @@ public static class ImportEndpoints
     private static async Task<IResult> PreviewClientsCsvAsync(
         HttpContext httpContext,
         ISqlConnectionFactory connectionFactory,
+        ICpfProtectionService cpfService,
         CancellationToken cancellationToken)
     {
         if (!httpContext.Request.HasFormContentType)
@@ -812,7 +814,7 @@ public static class ImportEndpoints
             try
             {
                 var parsed = ParseLine(lineNumber, line);
-                ValidateLineRules(parsed);
+                ValidateLineRules(parsed, cpfService);
 
                 lines.Add(new ImportPreviewLineResponse
                 {
@@ -1052,6 +1054,7 @@ public static class ImportEndpoints
     private static async Task<IResult> GetJobByIdAsync(
         [FromRoute] int id,
         ISqlConnectionFactory connectionFactory,
+        ICpfProtectionService cpfService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -1104,7 +1107,7 @@ public static class ImportEndpoints
                 LineNumber = e.LineNumber,
                 Field = ResolveErrorField(e),
                 Action = e.Action,
-                Document = MaskDocument(e.Document ?? string.Empty),
+                Document = cpfService.Mask(e.Document ?? string.Empty),
                 Email = e.Email,
                 Message = e.Message
             }).ToArray()
@@ -1164,6 +1167,7 @@ public static class ImportEndpoints
         [FromRoute] Guid jobPublicId,
         [AsParameters] ImportJobErrorsRequest request,
         ISqlConnectionFactory connectionFactory,
+        ICpfProtectionService cpfService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -1219,7 +1223,7 @@ public static class ImportEndpoints
                 LineNumber = e.LineNumber,
                 Field = ResolveErrorField(e),
                 Action = e.Action,
-                Document = MaskDocument(e.Document ?? string.Empty),
+                Document = cpfService.Mask(e.Document ?? string.Empty),
                 Email = e.Email,
                 Message = e.Message
             }).ToArray()
@@ -1561,9 +1565,10 @@ public static class ImportEndpoints
         System.Data.IDbConnection connection,
         ImportCompanyMapRow company,
         CsvImportLineData data,
+        ICpfProtectionService cpfService,
         CancellationToken cancellationToken)
     {
-        ValidateLineRules(data);
+        ValidateLineRules(data, cpfService);
 
         var existing = await connection.QueryFirstOrDefaultAsync<ImportExistingClientRow>(new CommandDefinition(
             ImportQueries.FindActiveClientByDocumentOrEmail,
@@ -1636,7 +1641,7 @@ public static class ImportEndpoints
         throw new ValidationException("Unsupported action.");
     }
 
-    private static void ValidateLineRules(CsvImportLineData data)
+    private static void ValidateLineRules(CsvImportLineData data, ICpfProtectionService cpfService)
     {
         if (string.IsNullOrWhiteSpace(data.FirstName))
         {
@@ -1653,7 +1658,7 @@ public static class ImportEndpoints
             throw new ValidationException("CPF must contain 11 digits.");
         }
 
-        if (!IsValidCpf(data.Document))
+        if (!cpfService.Validate(data.Document))
         {
             throw new ValidationException("CPF is invalid.");
         }
@@ -1759,43 +1764,6 @@ public static class ImportEndpoints
         return NormalizeText(candidate, 1);
     }
 
-    private static bool IsValidCpf(string cpf)
-    {
-        if (cpf.Length != 11)
-        {
-            return false;
-        }
-
-        if (cpf.Distinct().Count() == 1)
-        {
-            return false;
-        }
-
-        var numbers = cpf.Select(c => c - '0').ToArray();
-        var sum = 0;
-        for (var i = 0; i < 9; i++)
-        {
-            sum += numbers[i] * (10 - i);
-        }
-
-        var remainder = sum % 11;
-        var digit1 = remainder < 2 ? 0 : 11 - remainder;
-        if (numbers[9] != digit1)
-        {
-            return false;
-        }
-
-        sum = 0;
-        for (var i = 0; i < 10; i++)
-        {
-            sum += numbers[i] * (11 - i);
-        }
-
-        remainder = sum % 11;
-        var digit2 = remainder < 2 ? 0 : 11 - remainder;
-        return numbers[10] == digit2;
-    }
-
     private static ImportJobItemResponse ToJobItem(ImportJobRow row) => new()
     {
         Id = row.Id,
@@ -1894,21 +1862,6 @@ public static class ImportEndpoints
         }
 
         return id;
-    }
-
-    private static string MaskDocument(string document)
-    {
-        if (string.IsNullOrWhiteSpace(document))
-        {
-            return string.Empty;
-        }
-
-        if (document.Length <= 4)
-        {
-            return new string('*', document.Length);
-        }
-
-        return new string('*', document.Length - 4) + document[^4..];
     }
 
     private static (string Title, string Message)? BuildNotification(string status, string fileName)

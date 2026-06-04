@@ -624,34 +624,54 @@ Este documento mapeia **TODA** a configuração necessária para executar o Part
 
 ---
 
-## 🆔 13. VALIDAÇÃO DE CPF
+## 🆔 13. PROTEÇÃO DE CPF
 
-### Feature Flags CPF
+### Cpf:ValidationEnabled
 
-| Aspecto | Implementação | Configurável |
-|---|---|---|
-| **Validação Dígitos** | Exigir 11 dígitos | ❌ Não (hardcoded) |
-| **Validação Algoritmo** | Algoritmo de CPF válido | ❌ Não (hardcoded) |
-| **Mascaramento** | Mascarado em responses TOTP | ❌ Não (hardcoded) |
-| **Hash Storage** | Não armazenado hashado | ❌ Não |
-| **Feature LGPD** | Não implementado | ❌ Não |
+| Propriedade | Valor |
+|---|---|
+| **Nome** | `Cpf:ValidationEnabled` |
+| **Tipo** | `bool` |
+| **Obrigatório** | ❌ NÃO (tem padrão) |
+| **Valor Padrão (Production)** | `true` |
+| **Valor Padrão (Development)** | `true` |
+| **Arquivo Origem** | `appsettings.json` |
+| **Variável Env** | `Cpf__ValidationEnabled` |
+| **Finalidade** | Habilita validação de CPF pelo algoritmo modulo 11 |
+| **Comportamento** | Se `true`: valida dígitos verificadores. Se `false`: aceita qualquer CPF com 11 dígitos |
 
-### Localização do Código CPF
+### Cpf:MaskEnabled
 
-| Função | Arquivo | Linha |
-|---|---|---|
-| `IsValidCpf()` | `Features/Import/ImportEndpoints.cs` | Importação CSV |
-| `IsValidCpf()` | `Infrastructure/Import/ImportWorker.cs` | Worker de importação |
-| Validação | Ambos os arquivos executam validação idêntica |
+| Propriedade | Valor |
+|---|---|
+| **Nome** | `Cpf:MaskEnabled` |
+| **Tipo** | `bool` |
+| **Obrigatório** | ❌ NÃO (tem padrão) |
+| **Valor Padrão (Production)** | `true` |
+| **Valor Padrão (Development)** | `false` |
+| **Arquivo Origem** | `appsettings.json` / `appsettings.Development.json` |
+| **Variável Env** | `Cpf__MaskEnabled` |
+| **Finalidade** | Habilita mascaramento de CPF em logs e responses |
+| **Comportamento** | Se `true`: exibe "***1234" (últimos 4 dígitos). Se `false`: exibe completo |
+| **Nota** | Em desenvolvimento, recomenda-se `false` para facilitar debugging |
 
-### Erro de Validação CPF
+### Cpf:HashEnabled
 
-```
-CPF must contain 11 digits.
-CPF is invalid.
-```
+| Propriedade | Valor |
+|---|---|
+| **Nome** | `Cpf:HashEnabled` |
+| **Tipo** | `bool` |
+| **Obrigatório** | ❌ NÃO (tem padrão) |
+| **Valor Padrão** | `false` |
+| **Arquivo Origem** | `appsettings.json` |
+| **Variável Env** | `Cpf__HashEnabled` |
+| **Finalidade** | Prepara infraestrutura para hash de CPF (fase futura) |
+| **Comportamento** | Se `true`: stub preparado. Se `false`: não aplica hash |
+| **Nota** | **PRÉ-IMP-8: Manter como `false`** (implementação real em fase futura) |
 
-**Não há configuração ou feature flags específicas para CPF** — validação é hardcoded no código.
+**Classe:** `CpfOptions` em `Infrastructure/Security/CpfOptions.cs`  
+**Serviço:** `CpfProtectionService` em `Infrastructure/Security/CpfProtectionService.cs`  
+**Interface:** `ICpfProtectionService` em `Infrastructure/Security/ICpfProtectionService.cs`
 
 ---
 
