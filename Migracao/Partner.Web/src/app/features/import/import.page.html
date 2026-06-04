@@ -62,7 +62,7 @@
 
         <div class="upload-actions">
           <button mat-stroked-button type="button" (click)="selectAllValid()">Selecionar válidas</button>
-          <button mat-stroked-button type="button" (click)="clearSelection()">Limpar seleção</button>
+          <button mat-stroked-button type="button" (click)="clearPreviewSelection()">Limpar seleção</button>
         </div>
 
         <div class="table-wrapper">
@@ -169,66 +169,186 @@
       </section>
     }
 
-    @if (showHistory) {
-    <section class="history">
-      <h3>Histórico de importações</h3>
+      @if (showHistory) {
+      <section class="history">
+        <h3>Histórico de importações</h3>
 
-      <div class="table-wrapper">
-        <table mat-table [dataSource]="jobs" class="mat-elevation-z2">
-          <ng-container matColumnDef="id">
-            <th mat-header-cell *matHeaderCellDef>Job</th>
-            <td mat-cell *matCellDef="let item">{{ item.id }}</td>
-          </ng-container>
+        <form class="history-filters" [formGroup]="filterForm">
+          <mat-form-field appearance="outline">
+            <mat-label>Status</mat-label>
+            <mat-select formControlName="status">
+              @for (option of statusOptions; track option.value) {
+                <mat-option [value]="option.value">{{ option.label }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
 
-          <ng-container matColumnDef="fileName">
-            <th mat-header-cell *matHeaderCellDef>Arquivo</th>
-            <td mat-cell *matCellDef="let item">{{ item.fileName }}</td>
-          </ng-container>
+          <mat-form-field appearance="outline">
+            <mat-label>Data inicial (UTC)</mat-label>
+            <input matInput type="date" formControlName="startDateUtc" />
+          </mat-form-field>
 
-          <ng-container matColumnDef="status">
-            <th mat-header-cell *matHeaderCellDef>Status</th>
-            <td mat-cell *matCellDef="let item">{{ item.status }}</td>
-          </ng-container>
+          <mat-form-field appearance="outline">
+            <mat-label>Data final (UTC)</mat-label>
+            <input matInput type="date" formControlName="endDateUtc" />
+          </mat-form-field>
 
-          <ng-container matColumnDef="totalRows">
-            <th mat-header-cell *matHeaderCellDef>Total</th>
-            <td mat-cell *matCellDef="let item">{{ item.totalRows }}</td>
-          </ng-container>
+          <div class="history-actions">
+            <button mat-flat-button color="primary" type="button" (click)="applyFilters()">Filtrar</button>
+            <button mat-stroked-button type="button" (click)="clearFilters()">Limpar</button>
+          </div>
+        </form>
 
-          <ng-container matColumnDef="successRows">
-            <th mat-header-cell *matHeaderCellDef>Sucesso</th>
-            <td mat-cell *matCellDef="let item">{{ item.successRows }}</td>
-          </ng-container>
+        <div class="table-wrapper">
+          <table mat-table [dataSource]="jobs" class="mat-elevation-z2">
+            <ng-container matColumnDef="fileName">
+              <th mat-header-cell *matHeaderCellDef>Arquivo</th>
+              <td mat-cell *matCellDef="let item">
+                <div class="file-cell">
+                  <span>{{ item.fileName }}</span>
+                  <button mat-icon-button type="button" (click)="selectJob(item)" aria-label="Detalhes">
+                    <mat-icon>open_in_new</mat-icon>
+                  </button>
+                </div>
+              </td>
+            </ng-container>
 
-          <ng-container matColumnDef="errorRows">
-            <th mat-header-cell *matHeaderCellDef>Erros</th>
-            <td mat-cell *matCellDef="let item">{{ item.errorRows }}</td>
-          </ng-container>
+            <ng-container matColumnDef="feature">
+              <th mat-header-cell *matHeaderCellDef>Tipo</th>
+              <td mat-cell *matCellDef="let item">{{ item.feature }}</td>
+            </ng-container>
 
-          <ng-container matColumnDef="durationMs">
-            <th mat-header-cell *matHeaderCellDef>Duração (ms)</th>
-            <td mat-cell *matCellDef="let item">{{ item.durationMs }}</td>
-          </ng-container>
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let item">
+                <mat-chip-set>
+                  <mat-chip [ngClass]="'status-' + item.status">{{ item.status }}</mat-chip>
+                </mat-chip-set>
+              </td>
+            </ng-container>
 
-          <ng-container matColumnDef="startedAt">
-            <th mat-header-cell *matHeaderCellDef>Início (UTC)</th>
-            <td mat-cell *matCellDef="let item">{{ item.startedAtUtc }}</td>
-          </ng-container>
+            <ng-container matColumnDef="progress">
+              <th mat-header-cell *matHeaderCellDef>Progresso</th>
+              <td mat-cell *matCellDef="let item">
+                <mat-progress-bar mode="determinate" [value]="item.progressPercent"></mat-progress-bar>
+                <small>{{ item.progressPercent }}%</small>
+              </td>
+            </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="jobColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: jobColumns"></tr>
-        </table>
-      </div>
+            <ng-container matColumnDef="processedRows">
+              <th mat-header-cell *matHeaderCellDef>Processadas</th>
+              <td mat-cell *matCellDef="let item">{{ item.processedRows }} / {{ item.totalRows }}</td>
+            </ng-container>
 
-      <mat-paginator
-        [length]="totalJobs"
-        [pageIndex]="pageIndex"
-        [pageSize]="pageSize"
-        [pageSizeOptions]="[10, 20, 50]"
-        (page)="onPageChange($event)">
-      </mat-paginator>
-    </section>
-    }
+            <ng-container matColumnDef="errorRows">
+              <th mat-header-cell *matHeaderCellDef>Erros</th>
+              <td mat-cell *matCellDef="let item">{{ item.errorRows }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="createdAt">
+              <th mat-header-cell *matHeaderCellDef>Data</th>
+              <td mat-cell *matCellDef="let item">{{ item.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="jobColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: jobColumns;" (click)="selectJob(row)"></tr>
+          </table>
+        </div>
+
+        <mat-paginator
+          [length]="totalJobs"
+          [pageIndex]="pageIndex"
+          [pageSize]="pageSize"
+          [pageSizeOptions]="[10, 20, 50]"
+          (page)="onPageChange($event)">
+        </mat-paginator>
+      </section>
+      }
+
+      @if (selectedJob) {
+      <section class="job-detail">
+        <div class="detail-header">
+          <h3>Detalhes da importação</h3>
+          <button mat-stroked-button type="button" (click)="clearSelection()">Fechar</button>
+        </div>
+
+        <mat-card class="detail-card">
+          <mat-card-content>
+            <div class="summary-grid">
+              <div><strong>Arquivo:</strong> {{ selectedJob.fileName }}</div>
+              <div><strong>Tipo:</strong> {{ selectedJob.feature }}</div>
+              <div><strong>Status:</strong> {{ selectedJob.status }}</div>
+              <div><strong>Criado:</strong> {{ selectedJob.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}</div>
+              <div><strong>Início:</strong> {{ selectedJob.startedAtUtc | date: 'dd/MM/yyyy HH:mm' }}</div>
+              <div><strong>Fim:</strong> {{ selectedJob.finishedAtUtc ? (selectedJob.finishedAtUtc | date: 'dd/MM/yyyy HH:mm') : '-' }}</div>
+              <div><strong>Duração:</strong> {{ formatDuration(selectedJob.durationMs) }}</div>
+              <div><strong>Total:</strong> {{ selectedJob.totalRows }}</div>
+              <div><strong>Sucesso:</strong> {{ selectedJob.successRows }}</div>
+              <div><strong>Erros:</strong> {{ selectedJob.errorRows }}</div>
+            </div>
+
+            <mat-progress-bar mode="determinate" [value]="selectedJob.progressPercent"></mat-progress-bar>
+            <div class="progress-label">{{ selectedJob.progressPercent }}% ({{ selectedJob.processedRows }} / {{ selectedJob.totalRows }})</div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="detail-card">
+          <mat-card-header>
+            <mat-card-title>Erros</mat-card-title>
+            <mat-card-subtitle>
+              {{ selectedJobErrors?.total ?? 0 }} registros
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="table-wrapper">
+              <table mat-table [dataSource]="selectedJobErrors?.items ?? []" class="mat-elevation-z2">
+                <ng-container matColumnDef="lineNumber">
+                  <th mat-header-cell *matHeaderCellDef>Linha</th>
+                  <td mat-cell *matCellDef="let item">{{ item.lineNumber }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="field">
+                  <th mat-header-cell *matHeaderCellDef>Campo</th>
+                  <td mat-cell *matCellDef="let item">{{ item.field ?? '-' }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="action">
+                  <th mat-header-cell *matHeaderCellDef>Ação</th>
+                  <td mat-cell *matCellDef="let item">{{ item.action }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="document">
+                  <th mat-header-cell *matHeaderCellDef>Documento</th>
+                  <td mat-cell *matCellDef="let item">{{ item.document }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="email">
+                  <th mat-header-cell *matHeaderCellDef>E-mail</th>
+                  <td mat-cell *matCellDef="let item">{{ item.email }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="message">
+                  <th mat-header-cell *matHeaderCellDef>Mensagem</th>
+                  <td mat-cell *matCellDef="let item">{{ item.message }}</td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="errorListColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: errorListColumns"></tr>
+              </table>
+            </div>
+
+            <mat-paginator
+              [length]="selectedJobErrors?.total ?? 0"
+              [pageIndex]="errorPageIndex"
+              [pageSize]="errorPageSize"
+              [pageSizeOptions]="[10, 20, 50]"
+              (page)="onErrorPageChange($event)">
+            </mat-paginator>
+          </mat-card-content>
+        </mat-card>
+      </section>
+      }
   </mat-card-content>
 </mat-card>
+
 

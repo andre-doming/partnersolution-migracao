@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -12,12 +12,19 @@ import { MatTableModule } from '@angular/material/table';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatChipsModule } from '@angular/material/chips';
 import { finalize } from 'rxjs/operators';
+import { Subject, timer } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { ImportService } from './import.service';
+import { ActivatedRoute } from '@angular/router';
 import {
   ImportClientsCsvResponse,
   ImportCompanyLookupItem,
   ImportJobItem,
+  ImportJobDetail,
+  ImportJobErrorsResponse,
   ImportPreviewCsvResponse,
   ImportPreviewLine
 } from './import.models';
@@ -38,18 +45,25 @@ import {
     MatTableModule,
     MatPaginatorModule,
     MatProgressBarModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    MatExpansionModule,
+    MatChipsModule
   ],
   templateUrl: './import.page.html',
   styleUrl: './import.page.scss'
 })
-export class ImportPageComponent implements OnInit {
+export class ImportPageComponent implements OnInit, OnDestroy {
   private readonly importService = inject(ImportService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly destroy$ = new Subject<void>();
 
   isUploading = false;
   isLoadingJobs = false;
+  isLoadingDetails = false;
+  isLoadingErrors = false;
+  isPolling = false;
   showHistory = false;
   selectedFile: File | null = null;
   previewResult: ImportPreviewCsvResponse | null = null;
@@ -58,22 +72,57 @@ export class ImportPageComponent implements OnInit {
   companies: ImportCompanyLookupItem[] = [];
   jobs: ImportJobItem[] = [];
   lastResult: ImportClientsCsvResponse | null = null;
+  selectedJob: ImportJobDetail | null = null;
+  selectedJobErrors: ImportJobErrorsResponse | null = null;
 
   totalJobs = 0;
   pageIndex = 0;
   pageSize = 10;
+  errorPageIndex = 0;
+  errorPageSize = 10;
+
+  readonly statusOptions = [
+    { value: '', label: 'Todos' },
+    { value: 'Queued', label: 'Queued' },
+    { value: 'Running', label: 'Running' },
+    { value: 'Completed', label: 'Completed' },
+    { value: 'CompletedWithErrors', label: 'CompletedWithErrors' },
+    { value: 'Failed', label: 'Failed' },
+    { value: 'Cancelled', label: 'Cancelled' }
+  ];
 
   readonly uploadForm = this.fb.group({
     companyId: this.fb.nonNullable.control<number>(0, [Validators.required, Validators.min(1)])
   });
 
-  readonly jobColumns = ['id', 'fileName', 'status', 'totalRows', 'successRows', 'errorRows', 'durationMs', 'startedAt'];
+  readonly filterForm = this.fb.group({
+    status: this.fb.nonNullable.control<string>(''),
+    startDateUtc: this.fb.control<string | null>(null),
+    endDateUtc: this.fb.control<string | null>(null)
+  });
+
+  readonly jobColumns = ['fileName', 'feature', 'status', 'progress', 'processedRows', 'errorRows', 'createdAt'];
   readonly errorColumns = ['lineNumber', 'action', 'document', 'email', 'message'];
   readonly previewColumns = ['select', 'lineNumber', 'action', 'firstName', 'lastName', 'document', 'email', 'validation'];
+  readonly errorListColumns = ['lineNumber', 'field', 'action', 'document', 'email', 'message'];
 
   ngOnInit(): void {
     this.loadLookups();
     this.loadJobs();
+    this.startPolling();
+    this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe((params) => {
+      const jobId = params['job'];
+      if (jobId) {
+        this.loadJobDetails(jobId);
+        this.loadJobErrors(jobId);
+        this.showHistory = true;
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   onFileSelected(event: Event): void {
@@ -195,7 +244,7 @@ export class ImportPageComponent implements OnInit {
     }
   }
 
-  clearSelection(): void {
+  clearPreviewSelection(): void {
     this.selectedLineNumbers.clear();
   }
 
@@ -217,6 +266,73 @@ export class ImportPageComponent implements OnInit {
     this.loadJobs();
   }
 
+  onErrorPageChange(event: PageEvent): void {
+    this.errorPageIndex = event.pageIndex;
+    this.errorPageSize = event.pageSize;
+    if (this.selectedJob) {
+      this.loadJobErrors(this.selectedJob.jobPublicId);
+    }
+  }
+
+  applyFilters(): void {
+    this.pageIndex = 0;
+    this.loadJobs();
+  }
+
+  clearFilters(): void {
+    this.filterForm.reset({ status: '', startDateUtc: null, endDateUtc: null });
+    this.pageIndex = 0;
+    this.loadJobs();
+  }
+
+  selectJob(job: ImportJobItem): void {
+    this.selectedJob = null;
+    this.selectedJobErrors = null;
+    this.errorPageIndex = 0;
+    this.errorPageSize = 10;
+    this.loadJobDetails(job.jobPublicId);
+    this.loadJobErrors(job.jobPublicId);
+  }
+
+  clearSelection(): void {
+    this.selectedJob = null;
+    this.selectedJobErrors = null;
+  }
+
+  isTerminal(status: string): boolean {
+    return ['Completed', 'CompletedWithErrors', 'Failed', 'Cancelled'].includes(status);
+  }
+
+  formatDuration(durationMs: number): string {
+    if (!durationMs || durationMs <= 0) {
+      return '-';
+    }
+
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}m ${seconds}s`;
+  }
+
+  trackJob = (_: number, job: ImportJobItem) => job.jobPublicId;
+
+  private startPolling(): void {
+    this.isPolling = true;
+    timer(0, 30000)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        const hasActiveJobs = this.jobs.some((job) => job.status === 'Queued' || job.status === 'Running');
+        if (hasActiveJobs) {
+          this.loadJobs(true);
+        }
+
+        if (this.selectedJob && (this.selectedJob.status === 'Queued' || this.selectedJob.status === 'Running')) {
+          this.loadJobDetails(this.selectedJob.jobPublicId, true);
+          this.loadJobErrors(this.selectedJob.jobPublicId, true);
+        }
+      });
+  }
+
   private loadLookups(): void {
     this.importService.getLookups().subscribe({
       next: (response) => {
@@ -230,19 +346,71 @@ export class ImportPageComponent implements OnInit {
     });
   }
 
-  private loadJobs(): void {
-    this.isLoadingJobs = true;
+  private loadJobs(isPolling = false): void {
+    if (!isPolling) {
+      this.isLoadingJobs = true;
+    }
+
+    const filter = this.filterForm.getRawValue();
 
     this.importService
-      .getJobs({ page: this.pageIndex + 1, pageSize: this.pageSize })
+      .getJobs({
+        page: this.pageIndex + 1,
+        pageSize: this.pageSize,
+        status: filter.status || null,
+        startDateUtc: filter.startDateUtc,
+        endDateUtc: filter.endDateUtc
+      })
       .pipe(finalize(() => (this.isLoadingJobs = false)))
       .subscribe({
         next: (response) => {
           this.jobs = response.items;
           this.totalJobs = response.total;
+
+          if (this.selectedJob) {
+            const updated = response.items.find((job) => job.jobPublicId === this.selectedJob?.jobPublicId);
+            if (updated) {
+              this.selectedJob = { ...this.selectedJob, ...updated };
+            }
+          }
         },
         error: () => this.snackBar.open('Erro ao carregar histórico de importações.', 'Fechar', { duration: 3000 })
       });
   }
+
+  private loadJobDetails(jobPublicId: string, isPolling = false): void {
+    if (!isPolling) {
+      this.isLoadingDetails = true;
+    }
+
+    this.importService
+      .getJobByPublicId(jobPublicId)
+      .pipe(finalize(() => (this.isLoadingDetails = false)))
+      .subscribe({
+        next: (response) => {
+          this.selectedJob = response;
+        },
+        error: () => this.snackBar.open('Erro ao carregar detalhes da importação.', 'Fechar', { duration: 3000 })
+      });
+  }
+
+  private loadJobErrors(jobPublicId: string, isPolling = false): void {
+    if (!isPolling) {
+      this.isLoadingErrors = true;
+    }
+
+    this.importService
+      .getJobErrors(jobPublicId, this.errorPageIndex + 1, this.errorPageSize)
+      .pipe(finalize(() => (this.isLoadingErrors = false)))
+      .subscribe({
+        next: (response) => {
+          this.selectedJobErrors = response;
+        },
+        error: () => this.snackBar.open('Erro ao carregar erros da importação.', 'Fechar', { duration: 3000 })
+      });
+  }
 }
+
+
+
 

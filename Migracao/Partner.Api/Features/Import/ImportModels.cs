@@ -4,6 +4,10 @@ public sealed class ImportJobListRequest
 {
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
+    public string? Status { get; init; }
+    public DateTime? StartDateUtc { get; init; }
+    public DateTime? EndDateUtc { get; init; }
+    public int? UserId { get; init; }
 }
 
 public sealed class ImportJobListResponse
@@ -17,34 +21,82 @@ public sealed class ImportJobListResponse
 public sealed class ImportJobItemResponse
 {
     public int Id { get; init; }
+    public Guid JobPublicId { get; init; }
     public string Feature { get; init; } = string.Empty;
     public string FileName { get; init; } = string.Empty;
     public int CompanyId { get; init; }
     public string Status { get; init; } = string.Empty;
     public int TotalRows { get; init; }
+    public int ProcessedRows { get; init; }
     public int SuccessRows { get; init; }
     public int ErrorRows { get; init; }
+    public decimal ProgressPercent { get; init; }
     public int DurationMs { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
     public DateTime StartedAtUtc { get; init; }
     public DateTime? FinishedAtUtc { get; init; }
     public int CreatedByUserId { get; init; }
+    public bool CancelRequested { get; init; }
+    public DateTime? CancelRequestedAtUtc { get; init; }
+    public DateTime? CancelledAtUtc { get; init; }
+    public int? RetryOfImportJobId { get; init; }
 }
 
 public sealed class ImportJobDetailResponse
 {
     public int Id { get; init; }
+    public Guid JobPublicId { get; init; }
     public string Feature { get; init; } = string.Empty;
     public string FileName { get; init; } = string.Empty;
     public int CompanyId { get; init; }
     public string Status { get; init; } = string.Empty;
     public int TotalRows { get; init; }
+    public int ProcessedRows { get; init; }
     public int SuccessRows { get; init; }
     public int ErrorRows { get; init; }
+    public decimal ProgressPercent { get; init; }
     public int DurationMs { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
     public DateTime StartedAtUtc { get; init; }
     public DateTime? FinishedAtUtc { get; init; }
     public int CreatedByUserId { get; init; }
+    public bool CancelRequested { get; init; }
+    public DateTime? CancelRequestedAtUtc { get; init; }
+    public DateTime? CancelledAtUtc { get; init; }
+    public int? RetryOfImportJobId { get; init; }
     public IReadOnlyCollection<ImportRowErrorResponse> Errors { get; init; } = [];
+}
+
+public sealed class ImportJobActionResponse
+{
+    public Guid JobPublicId { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public Guid? NewJobPublicId { get; init; }
+}
+
+public sealed class ImportJobErrorsRequest
+{
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 20;
+}
+
+public sealed class ImportJobErrorsResponse
+{
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+    public int Total { get; init; }
+    public IReadOnlyCollection<ImportRowErrorResponse> Items { get; init; } = [];
+}
+
+public sealed class ImportNotificationResponse
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public DateTime CreatedAtUtc { get; init; }
+    public Guid ImportJobPublicId { get; init; }
 }
 
 public sealed class ImportClientsCsvResponse
@@ -110,35 +162,95 @@ public sealed class ImportSelectedLineRequest
 public sealed class ImportRowErrorResponse
 {
     public int LineNumber { get; init; }
+    public string? Field { get; init; }
     public string? Action { get; init; }
     public string? Document { get; init; }
     public string? Email { get; init; }
     public string Message { get; init; } = string.Empty;
+}
+
+public sealed class ImportAsyncUploadResponse
+{
+    public Guid JobPublicId { get; init; }
+    public string Status { get; init; } = string.Empty;
+}
+
+public sealed class ImportJobCreateRequest
+{
+    public Guid PublicId { get; init; }
+    public string Feature { get; init; } = string.Empty;
+    public string FileName { get; init; } = string.Empty;
+    public string FilePath { get; init; } = string.Empty;
+    public string FileHashSha256 { get; init; } = string.Empty;
+    public int CompanyId { get; init; }
+    public int CreatedByUserId { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public int TotalRows { get; init; }
+    public int ProcessedRows { get; init; }
+    public int SuccessRows { get; init; }
+    public int ErrorRows { get; init; }
+    public int DurationMs { get; init; }
+    public DateTime StartedAtUtc { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
+    public DateTime? FinishedAtUtc { get; init; }
+    public bool CancelRequested { get; init; }
+    public DateTime? CancelRequestedAtUtc { get; init; }
+    public DateTime? CancelledAtUtc { get; init; }
+    public int? RetryOfImportJobId { get; init; }
+    public int Attempts { get; init; }
+    public string? LastError { get; init; }
+    public string? LockedBy { get; init; }
+    public DateTime? LockedAtUtc { get; init; }
+    public DateTime? LastHeartbeatAtUtc { get; init; }
+    public string? CorrelationId { get; init; }
 }
 
 internal sealed class ImportJobRow
 {
     public int Id { get; init; }
+    public Guid JobPublicId { get; init; }
     public string Feature { get; init; } = string.Empty;
     public string FileName { get; init; } = string.Empty;
+    public string FilePath { get; init; } = string.Empty;
+    public string FileHashSha256 { get; init; } = string.Empty;
     public int CompanyId { get; init; }
     public string Status { get; init; } = string.Empty;
     public int TotalRows { get; init; }
+    public int ProcessedRows { get; init; }
     public int SuccessRows { get; init; }
     public int ErrorRows { get; init; }
     public int DurationMs { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
     public DateTime StartedAtUtc { get; init; }
     public DateTime? FinishedAtUtc { get; init; }
     public int CreatedByUserId { get; init; }
+    public bool CancelRequested { get; init; }
+    public DateTime? CancelRequestedAtUtc { get; init; }
+    public DateTime? CancelledAtUtc { get; init; }
+    public int? RetryOfImportJobId { get; init; }
 }
 
 internal sealed class ImportJobErrorRow
 {
     public int LineNumber { get; init; }
+    public string? ErrorCode { get; init; }
     public string? Action { get; init; }
     public string? Document { get; init; }
     public string? Email { get; init; }
     public string Message { get; init; } = string.Empty;
+}
+
+internal sealed class ImportNotificationRow
+{
+    public int Id { get; init; }
+    public int ImportJobId { get; init; }
+    public int UserId { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public DateTime CreatedAtUtc { get; init; }
+    public DateTime? ReadAtUtc { get; init; }
+    public Guid ImportJobPublicId { get; init; }
 }
 
 internal sealed class ImportCompanyMapRow
@@ -146,6 +258,14 @@ internal sealed class ImportCompanyMapRow
     public int CompanyId { get; init; }
     public Guid PartnerId { get; init; }
     public string CompanyName { get; init; } = string.Empty;
+}
+
+internal sealed class ImportJobIdempotencyRow
+{
+    public int Id { get; init; }
+    public Guid PublicId { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public DateTime StartedAtUtc { get; init; }
 }
 
 internal sealed class ImportExistingClientRow
@@ -167,4 +287,12 @@ internal sealed class CsvImportLineData
     public string Department { get; init; } = string.Empty;
     public string Role { get; init; } = string.Empty;
 }
+
+
+
+
+
+
+
+
 

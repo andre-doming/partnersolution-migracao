@@ -10,6 +10,16 @@
   </nav>
 
   <div class="toolbar-actions">
+    <button
+      mat-icon-button
+      type="button"
+      [matMenuTriggerFor]="notificationsMenu"
+      aria-label="Notificações"
+      matBadge="{{ unreadCount }}"
+      [matBadgeHidden]="unreadCount === 0"
+      matBadgeColor="warn">
+      <mat-icon>notifications</mat-icon>
+    </button>
     <button mat-icon-button type="button" (click)="toggleTheme()" aria-label="Alternar tema">
       <mat-icon>contrast</mat-icon>
     </button>
@@ -23,6 +33,16 @@
     </button>
   </div>
 </mat-toolbar>
+
+<mat-menu #notificationsMenu="matMenu" class="notifications-menu" yPosition="below" xPosition="before">
+  <app-notifications-panel
+    [notifications]="notifications"
+    [unreadCount]="unreadCount"
+    (markAllRead)="markAllNotificationsRead()"
+    (markRead)="markNotificationRead($event)"
+    (openJob)="openNotification($event)">
+  </app-notifications-panel>
+</mat-menu>
 
 <main class="content">
   <router-outlet />

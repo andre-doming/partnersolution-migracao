@@ -9,7 +9,9 @@ import {
   ImportJobDetail,
   ImportJobListRequest,
   ImportJobListResponse,
-  ImportLookupResponse
+  ImportLookupResponse,
+  ImportJobErrorsResponse,
+  ImportNotification
 } from './import.models';
 
 @Injectable({ providedIn: 'root' })
@@ -42,15 +44,50 @@ export class ImportService {
   }
 
   getJobs(request: ImportJobListRequest): Observable<ImportJobListResponse> {
-    const params = new HttpParams()
+    let params = new HttpParams()
       .set('page', request.page)
       .set('pageSize', request.pageSize);
+
+    if (request.status) {
+      params = params.set('status', request.status);
+    }
+
+    if (request.startDateUtc) {
+      params = params.set('startDateUtc', request.startDateUtc);
+    }
+
+    if (request.endDateUtc) {
+      params = params.set('endDateUtc', request.endDateUtc);
+    }
+
+    if (request.userId) {
+      params = params.set('userId', request.userId);
+    }
 
     return this.http.get<ImportJobListResponse>(`${this.baseUrl}/jobs`, { params });
   }
 
-  getJobById(id: number): Observable<ImportJobDetail> {
-    return this.http.get<ImportJobDetail>(`${this.baseUrl}/jobs/${id}`);
+  getJobByPublicId(jobPublicId: string): Observable<ImportJobDetail> {
+    return this.http.get<ImportJobDetail>(`${this.baseUrl}/jobs/${jobPublicId}`);
+  }
+
+  getJobErrors(jobPublicId: string, page: number, pageSize: number): Observable<ImportJobErrorsResponse> {
+    const params = new HttpParams().set('page', page).set('pageSize', pageSize);
+    return this.http.get<ImportJobErrorsResponse>(`${this.baseUrl}/jobs/${jobPublicId}/errors`, { params });
+  }
+
+  getNotifications(): Observable<ImportNotification[]> {
+    return this.http.get<ImportNotification[]>(`${this.baseUrl}/notifications`);
+  }
+
+  markNotificationRead(id: number): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/notifications/${id}/read`, {});
+  }
+
+  markAllNotificationsRead(): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/notifications/read-all`, {});
   }
 }
+
+
 

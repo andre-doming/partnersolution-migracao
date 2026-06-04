@@ -1,14 +1,16 @@
 using Dapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Partner.Api.Features.Clients;
 using Partner.Api.Infrastructure.Database;
+using Partner.Api.Infrastructure.Import;
 using Partner.Api.Infrastructure.Observability;
 using Partner.Api.Infrastructure.Security;
 using Partner.Api.Middleware;
-using System.Security.Cryptography;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Partner.Api.Features.Import;
@@ -28,6 +30,7 @@ public static class ImportEndpoints
         "acao"
     ];
 
+
     public static IEndpointRouteBuilder MapImportEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/import")
@@ -39,6 +42,11 @@ public static class ImportEndpoints
             .Produces<ImportClientsCsvResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
+        group.MapPost("/{feature}/csv/async", ImportAsyncCsvAsync)
+            .Accepts<IFormFile>("multipart/form-data")
+            .Produces<ImportAsyncUploadResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest);
+
         group.MapPost("/clients-csv/preview", PreviewClientsCsvAsync)
             .Accepts<IFormFile>("multipart/form-data")
             .Produces<ImportPreviewCsvResponse>(StatusCodes.Status200OK)
@@ -46,7 +54,7 @@ public static class ImportEndpoints
 
         group.MapPost("/clients-csv/process-selected", ProcessSelectedClientsCsvAsync)
             .Accepts<ImportProcessSelectedRequest>("application/json")
-            .Produces<ImportClientsCsvResponse>(StatusCodes.Status200OK)
+            .Produces<ImportAsyncUploadResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/lookups", GetLookupsAsync)
@@ -59,7 +67,301 @@ public static class ImportEndpoints
             .Produces<ImportJobDetailResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/jobs/{jobPublicId:guid}", GetJobByPublicIdAsync)
+            .Produces<ImportJobDetailResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapGet("/jobs/{jobPublicId:guid}/errors", GetJobErrorsAsync)
+            .Produces<ImportJobErrorsResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/jobs/{jobPublicId:guid}/cancel", CancelImportJobAsync)
+            .Produces<ImportJobActionResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest);
+
+        group.MapPost("/jobs/{jobPublicId:guid}/retry", RetryImportJobAsync)
+            .Produces<ImportJobActionResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest);
+
+        group.MapGet("/notifications", ListNotificationsAsync)
+            .Produces<IReadOnlyCollection<ImportNotificationResponse>>(StatusCodes.Status200OK);
+
+        group.MapPost("/notifications/{id:int}/read", MarkNotificationReadAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/notifications/read-all", MarkAllNotificationsReadAsync)
+            .Produces(StatusCodes.Status204NoContent);
+
         return app;
+    }
+
+    private static async Task<IResult> ListNotificationsAsync(
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        var items = (await connection.QueryAsync<ImportNotificationRow>(new CommandDefinition(
+            ImportQueries.ListImportNotifications,
+            new { UserId = actorUserId },
+            cancellationToken: cancellationToken))).ToArray();
+
+        var response = items.Select(item => new ImportNotificationResponse
+        {
+            Id = item.Id,
+            Title = item.Title,
+            Message = item.Message,
+            Status = item.Status,
+            CreatedAtUtc = item.CreatedAtUtc,
+            ImportJobPublicId = item.ImportJobPublicId
+        }).ToArray();
+
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> MarkNotificationReadAsync(
+        [FromRoute] int id,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var actorUserId = ResolveActorUserId(httpContext.User);
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+
+        var notification = await connection.QueryFirstOrDefaultAsync<ImportNotificationRow>(new CommandDefinition(
+            ImportQueries.GetImportNotificationById,
+            new { Id = id, UserId = actorUserId },
+            cancellationToken: cancellationToken));
+
+        if (notification is null)
+        {
+            return Results.NotFound();
+        }
+
+        var updated = await connection.ExecuteAsync(new CommandDefinition(
+            ImportQueries.MarkImportNotificationRead,
+            new
+            {
+                Id = id,
+                UserId = actorUserId,
+                Status = "Read",
+                ReadAtUtc = DateTime.UtcNow,
+                UnreadStatus = "Unread"
+            },
+            cancellationToken: cancellationToken));
+
+        if (updated > 0)
+        {
+            var logger = loggerFactory.CreateLogger("ImportNotifications");
+            logger.LogInformation(
+                "NotificationRead NotificationId={NotificationId} JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} CorrelationId={CorrelationId}",
+                notification.Id,
+                notification.ImportJobId,
+                notification.ImportJobPublicId,
+                actorUserId,
+                correlationId);
+        }
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> MarkAllNotificationsReadAsync(
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var actorUserId = ResolveActorUserId(httpContext.User);
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+
+        var updated = await connection.ExecuteAsync(new CommandDefinition(
+            ImportQueries.MarkAllImportNotificationsRead,
+            new
+            {
+                UserId = actorUserId,
+                Status = "Read",
+                ReadAtUtc = DateTime.UtcNow,
+                UnreadStatus = "Unread"
+            },
+            cancellationToken: cancellationToken));
+
+        var logger = loggerFactory.CreateLogger("ImportNotifications");
+        logger.LogInformation(
+            "NotificationReadAll UserId={UserId} Count={Count} CorrelationId={CorrelationId}",
+            actorUserId,
+            updated,
+            correlationId);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ImportAsyncCsvAsync(
+        HttpContext httpContext,
+        string feature,
+        ISqlConnectionFactory connectionFactory,
+        ImportRabbitMqConnectionFactory rabbitMqConnectionFactory,
+        IOptions<ImportRabbitMqOptions> rabbitMqOptions,
+        IOptions<ImportStorageOptions> storageOptions,
+        IHostEnvironment hostEnvironment,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("ImportCsvAsync");
+        var startedAtUtc = DateTime.UtcNow;
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        if (!httpContext.Request.HasFormContentType)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["file"] = ["Request must be multipart/form-data."]
+            });
+        }
+
+        var form = await httpContext.Request.ReadFormAsync(cancellationToken);
+        var file = form.Files.GetFile("file");
+
+        if (file is null || file.Length == 0)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["file"] = ["CSV file is required."]
+            });
+        }
+
+        if (!int.TryParse(form["companyId"], out var companyId) || companyId <= 0)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["companyId"] = ["companyId is required and must be greater than zero."]
+            });
+        }
+
+        if (file.Length > 5 * 1024 * 1024)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["file"] = ["CSV file must be up to 5MB."]
+            });
+        }
+
+        var actorUserId = ResolveActorUserId(httpContext.User);
+        var isAdmin = IsAdmin(httpContext.User);
+
+        var companyMap = await connection.QueryFirstOrDefaultAsync<ImportCompanyMapRow>(
+            new CommandDefinition(ImportQueries.GetCompanyMapById, new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        if (companyMap is null)
+        {
+            throw new ValidationException("Company is invalid or inactive.");
+        }
+
+        if (!isAdmin)
+        {
+            var hasAccess = await connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(ImportQueries.CountUserAccessToCompany, new { UserId = actorUserId, CompanyId = companyId }, cancellationToken: cancellationToken));
+
+            if (hasAccess == 0)
+            {
+                throw new ValidationException("Selected company is not available for the authenticated user.");
+            }
+        }
+
+        var publicId = Guid.NewGuid();
+        var storageRoot = storageOptions.Value.StorageRoot;
+        var relativePath = Path.Combine(storageRoot, companyId.ToString(), publicId.ToString(), "source.csv");
+        var fullPath = Path.Combine(hostEnvironment.ContentRootPath, relativePath);
+
+        var fileHash = await ImportFileStorage.SaveStreamAndComputeHashAsync(file.OpenReadStream(), fullPath, cancellationToken);
+
+        var existingJob = await connection.QueryFirstOrDefaultAsync<ImportJobIdempotencyRow>(
+            new CommandDefinition(ImportQueries.FindJobByIdempotencyKey,
+            new { CompanyId = companyId, Feature = feature, FileHashSha256 = fileHash },
+            cancellationToken: cancellationToken));
+
+        if (existingJob is not null
+            && !ImportJobStatus.IsTerminal(existingJob.Status)
+            && DateTime.UtcNow.Subtract(existingJob.StartedAtUtc) <= TimeSpan.FromMinutes(10))
+        {
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+
+            logger.LogInformation(
+                "Import job idempotency hit. ExistingJobId={JobId} PublicId={PublicId} CompanyId={CompanyId} Feature={Feature} CorrelationId={CorrelationId}",
+                existingJob.Id,
+                existingJob.PublicId,
+                companyId,
+                feature,
+                correlationId);
+
+            return Results.Ok(new ImportAsyncUploadResponse
+            {
+                JobPublicId = existingJob.PublicId,
+                Status = existingJob.Status
+            });
+        }
+
+        var jobRequest = ImportJobRequestFactory.CreateQueued(
+            publicId,
+            feature,
+            file.FileName,
+            relativePath,
+            fileHash,
+            companyId,
+            actorUserId,
+            startedAtUtc,
+            correlationId);
+
+        var jobId = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            ImportQueries.InsertImportJob,
+            jobRequest,
+            cancellationToken: cancellationToken));
+
+        PublishImportJob(rabbitMqConnectionFactory, rabbitMqOptions.Value, correlationId, jobId, jobRequest);
+
+        logger.LogInformation(
+            "ImportJobQueued JobId={JobId} JobPublicId={JobPublicId} CompanyId={CompanyId} Feature={Feature} CorrelationId={CorrelationId}",
+            jobId,
+            publicId,
+            companyId,
+            feature,
+            correlationId);
+
+        return Results.Ok(new ImportAsyncUploadResponse
+        {
+            JobPublicId = publicId,
+            Status = ImportJobStatus.Queued
+        });
+    }
+
+    private static void PublishImportJob(
+        ImportRabbitMqConnectionFactory connectionFactory,
+        ImportRabbitMqOptions options,
+        string correlationId,
+        int jobId,
+        Partner.Api.Features.Import.ImportJobCreateRequest request)
+    {
+        var message = ImportJobMessageFactory.Create(jobId, request, correlationId);
+        ImportJobPublisher.Publish(connectionFactory, options, message);
     }
 
     private static async Task<IResult> ImportClientsCsvAsync(
@@ -137,17 +439,30 @@ public static class ImportEndpoints
             ImportQueries.InsertImportJob,
             new
             {
+                PublicId = Guid.NewGuid(),
                 Feature = "clients-csv",
                 FileName = file.FileName,
+                FilePath = file.FileName,
+                FileHashSha256 = "legacy",
                 CompanyId = companyId,
-                Status = "processing",
+                Status = ImportJobStatus.Running,
                 TotalRows = 0,
+                ProcessedRows = 0,
                 SuccessRows = 0,
                 ErrorRows = 0,
                 DurationMs = 0,
                 StartedAtUtc = startedAtUtc,
+                CreatedAtUtc = startedAtUtc,
                 FinishedAtUtc = (DateTime?)null,
-                CreatedByUserId = actorUserId
+                CreatedByUserId = actorUserId,
+                CancelRequested = false,
+                CancelRequestedAtUtc = (DateTime?)null,
+                Attempts = 0,
+                LastError = (string?)null,
+                LockedBy = (string?)null,
+                LockedAtUtc = (DateTime?)null,
+                LastHeartbeatAtUtc = (DateTime?)null,
+                CorrelationId = correlationId
             },
             cancellationToken: cancellationToken));
 
@@ -218,14 +533,18 @@ public static class ImportEndpoints
                         actorUserId,
                         lineNumber,
                         error.Action,
-                        error.Document,
+                        MaskDocument(error.Document ?? string.Empty),
                         error.Email,
                         correlationId);
                 }
             }
 
             stopwatch.Stop();
-            var status = rowErrors.Count == 0 ? "completed" : successRows == 0 ? "failed" : "completed_with_errors";
+            var status = rowErrors.Count == 0
+                ? ImportJobStatus.Completed
+                : successRows == 0
+                    ? ImportJobStatus.Failed
+                    : ImportJobStatus.CompletedWithErrors;
 
             await connection.ExecuteAsync(new CommandDefinition(
                 ImportQueries.UpdateImportJob,
@@ -234,12 +553,45 @@ public static class ImportEndpoints
                     Id = jobId,
                     Status = status,
                     TotalRows = totalRows,
+                    ProcessedRows = totalRows,
                     SuccessRows = successRows,
                     ErrorRows = rowErrors.Count,
                     DurationMs = (int)stopwatch.ElapsedMilliseconds,
-                    FinishedAtUtc = DateTime.UtcNow
+                    FinishedAtUtc = DateTime.UtcNow,
+                    Attempts = 0,
+                    LastError = (string?)null,
+                    LockedBy = (string?)null,
+                    LockedAtUtc = (DateTime?)null,
+                    LastHeartbeatAtUtc = (DateTime?)null
                 },
                 cancellationToken: cancellationToken));
+
+            var notification = BuildNotification(status, file.FileName);
+            if (notification is not null)
+            {
+                var notificationId = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                    ImportQueries.InsertImportNotification,
+                    new
+                    {
+                        ImportJobId = jobId,
+                        UserId = actorUserId,
+                        Title = notification.Value.Title,
+                        Message = notification.Value.Message,
+                        Status = "Unread",
+                        CreatedAtUtc = DateTime.UtcNow,
+                        ReadAtUtc = (DateTime?)null
+                    },
+                    cancellationToken: cancellationToken));
+
+                logger.LogInformation(
+                    "NotificationCreated NotificationId={NotificationId} JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} Status={Status} CorrelationId={CorrelationId}",
+                    notificationId,
+                    jobId,
+                    Guid.Empty,
+                    actorUserId,
+                    status,
+                    correlationId);
+            }
 
             foreach (var error in rowErrors)
             {
@@ -248,11 +600,15 @@ public static class ImportEndpoints
                     new
                     {
                         ImportJobId = jobId,
-                        error.LineNumber,
+                        Seq = error.LineNumber,
+                        LineNumber = error.LineNumber,
+                        ErrorCode = (string?)null,
+                        error.Message,
+                        RawLine = (string?)null,
                         error.Action,
                         error.Document,
                         error.Email,
-                        error.Message
+                        CreatedAtUtc = DateTime.UtcNow
                     },
                     cancellationToken: cancellationToken));
             }
@@ -271,7 +627,7 @@ public static class ImportEndpoints
                 correlationId,
                 ImportJobMetrics.Snapshot());
 
-            ImportJobMetrics.MarkCompleted(failed: string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase));
+            ImportJobMetrics.MarkCompleted(failed: string.Equals(status, ImportJobStatus.Failed, StringComparison.OrdinalIgnoreCase));
 
             return Results.Ok(new ImportClientsCsvResponse
             {
@@ -297,12 +653,18 @@ public static class ImportEndpoints
                 new
                 {
                     Id = jobId,
-                    Status = "failed",
+                    Status = ImportJobStatus.Failed,
                     TotalRows = totalRows,
+                    ProcessedRows = totalRows,
                     SuccessRows = successRows,
                     ErrorRows = rowErrors.Count,
                     DurationMs = (int)stopwatch.ElapsedMilliseconds,
-                    FinishedAtUtc = DateTime.UtcNow
+                    FinishedAtUtc = DateTime.UtcNow,
+                    Attempts = 0,
+                    LastError = (string?)null,
+                    LockedBy = (string?)null,
+                    LockedAtUtc = (DateTime?)null,
+                    LastHeartbeatAtUtc = (DateTime?)null
                 },
                 cancellationToken: cancellationToken));
 
@@ -500,6 +862,10 @@ public static class ImportEndpoints
         [FromBody] ImportProcessSelectedRequest request,
         HttpContext httpContext,
         ISqlConnectionFactory connectionFactory,
+        ImportRabbitMqConnectionFactory rabbitMqConnectionFactory,
+        IOptions<ImportRabbitMqOptions> rabbitMqOptions,
+        IOptions<ImportStorageOptions> storageOptions,
+        IHostEnvironment hostEnvironment,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -521,7 +887,6 @@ public static class ImportEndpoints
 
         var logger = loggerFactory.CreateLogger("ImportCsvClientsSelected");
         var startedAtUtc = DateTime.UtcNow;
-        var stopwatch = Stopwatch.StartNew();
         var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
 
         using var connection = connectionFactory.CreateConnection();
@@ -554,173 +919,47 @@ public static class ImportEndpoints
         }
 
         var fileName = string.IsNullOrWhiteSpace(request.FileName) ? "selected-lines.csv" : request.FileName.Trim();
+        var publicId = Guid.NewGuid();
+        var storageRoot = storageOptions.Value.StorageRoot;
+        var relativePath = Path.Combine(storageRoot, request.CompanyId.ToString(), publicId.ToString(), "selected-lines.json");
+        var fullPath = Path.Combine(hostEnvironment.ContentRootPath, relativePath);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        await File.WriteAllTextAsync(fullPath, JsonSerializer.Serialize(request.SelectedLines), cancellationToken);
+
+        var fileHash = ImportFileStorage.ComputeSha256(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request.SelectedLines)));
+
+        var jobRequest = ImportJobRequestFactory.CreateQueued(
+            publicId,
+            "clients-csv-selected",
+            fileName,
+            relativePath,
+            fileHash,
+            request.CompanyId,
+            actorUserId,
+            startedAtUtc,
+            correlationId);
 
         var jobId = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             ImportQueries.InsertImportJob,
-            new
-            {
-                Feature = "clients-csv-selected",
-                FileName = fileName,
-                CompanyId = request.CompanyId,
-                Status = "processing",
-                TotalRows = 0,
-                SuccessRows = 0,
-                ErrorRows = 0,
-                DurationMs = 0,
-                StartedAtUtc = startedAtUtc,
-                FinishedAtUtc = (DateTime?)null,
-                CreatedByUserId = actorUserId
-            },
+            jobRequest,
             cancellationToken: cancellationToken));
 
-        ImportJobMetrics.MarkStarted();
+        PublishImportJob(rabbitMqConnectionFactory, rabbitMqOptions.Value, correlationId, jobId, jobRequest);
+
         logger.LogInformation(
-            "Import selected-lines job started. JobId={JobId} CompanyId={CompanyId} ActorUserId={ActorUserId} FileName={FileName} CorrelationId={CorrelationId}",
+            "ImportJobQueued JobId={JobId} JobPublicId={JobPublicId} CompanyId={CompanyId} Feature={Feature} CorrelationId={CorrelationId}",
             jobId,
+            publicId,
             request.CompanyId,
-            actorUserId,
-            fileName,
+            jobRequest.Feature,
             correlationId);
 
-        var rowErrors = new List<ImportRowErrorResponse>();
-        var successRows = 0;
-        var totalRows = 0;
-
-        try
+        return Results.Ok(new ImportAsyncUploadResponse
         {
-            foreach (var line in request.SelectedLines.OrderBy(l => l.LineNumber))
-            {
-                totalRows++;
-
-                var data = new CsvImportLineData
-                {
-                    LineNumber = line.LineNumber,
-                    Action = NormalizeAction(line.Action),
-                    FirstName = NormalizeText(line.FirstName, 120),
-                    LastName = NormalizeText(line.LastName, 120),
-                    Document = NormalizeDigits(line.Document, 14),
-                    Email = NormalizeEmail(line.Email),
-                    Gender = NormalizeGender(line.Gender),
-                    BirthDate = NormalizeDate(line.BirthDate),
-                    Department = NormalizeText(line.Department, 120),
-                    Role = NormalizeText(line.Role, 120)
-                };
-
-                try
-                {
-                    await ProcessLineAsync(connection, companyMap, data, cancellationToken);
-                    successRows++;
-                }
-                catch (Exception ex)
-                {
-                    var error = new ImportRowErrorResponse
-                    {
-                        LineNumber = data.LineNumber,
-                        Action = data.Action,
-                        Document = data.Document,
-                        Email = data.Email,
-                        Message = ex.Message
-                    };
-
-                    rowErrors.Add(error);
-
-                    logger.LogWarning(ex,
-                        "Import selected line failed. JobId={JobId} CompanyId={CompanyId} ActorUserId={ActorUserId} Line={Line} Action={Action} Document={Document} Email={Email} CorrelationId={CorrelationId}",
-                        jobId,
-                        request.CompanyId,
-                        actorUserId,
-                        data.LineNumber,
-                        error.Action,
-                        error.Document,
-                        error.Email,
-                        correlationId);
-                }
-            }
-
-            stopwatch.Stop();
-            var status = rowErrors.Count == 0 ? "completed" : successRows == 0 ? "failed" : "completed_with_errors";
-
-            await connection.ExecuteAsync(new CommandDefinition(
-                ImportQueries.UpdateImportJob,
-                new
-                {
-                    Id = jobId,
-                    Status = status,
-                    TotalRows = totalRows,
-                    SuccessRows = successRows,
-                    ErrorRows = rowErrors.Count,
-                    DurationMs = (int)stopwatch.ElapsedMilliseconds,
-                    FinishedAtUtc = DateTime.UtcNow
-                },
-                cancellationToken: cancellationToken));
-
-            foreach (var error in rowErrors)
-            {
-                await connection.ExecuteAsync(new CommandDefinition(
-                    ImportQueries.InsertImportJobError,
-                    new
-                    {
-                        ImportJobId = jobId,
-                        error.LineNumber,
-                        error.Action,
-                        error.Document,
-                        error.Email,
-                        error.Message
-                    },
-                    cancellationToken: cancellationToken));
-            }
-
-            logger.LogInformation(
-                "Import selected-lines job finished. JobId={JobId} CompanyId={CompanyId} ActorUserId={ActorUserId} FileName={FileName} Status={Status} TotalRows={TotalRows} SuccessRows={SuccessRows} ErrorRows={ErrorRows} DurationMs={DurationMs} CorrelationId={CorrelationId} Metrics={Metrics}",
-                jobId,
-                request.CompanyId,
-                actorUserId,
-                fileName,
-                status,
-                totalRows,
-                successRows,
-                rowErrors.Count,
-                (int)stopwatch.ElapsedMilliseconds,
-                correlationId,
-                ImportJobMetrics.Snapshot());
-
-            ImportJobMetrics.MarkCompleted(failed: string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase));
-
-            return Results.Ok(new ImportClientsCsvResponse
-            {
-                JobId = jobId,
-                Status = status,
-                FileName = fileName,
-                CompanyId = request.CompanyId,
-                TotalRows = totalRows,
-                SuccessRows = successRows,
-                ErrorRows = rowErrors.Count,
-                DurationMs = (int)stopwatch.ElapsedMilliseconds,
-                Errors = rowErrors
-            });
-        }
-        catch
-        {
-            stopwatch.Stop();
-
-            ImportJobMetrics.MarkCompleted(failed: true);
-
-            await connection.ExecuteAsync(new CommandDefinition(
-                ImportQueries.UpdateImportJob,
-                new
-                {
-                    Id = jobId,
-                    Status = "failed",
-                    TotalRows = totalRows,
-                    SuccessRows = successRows,
-                    ErrorRows = rowErrors.Count,
-                    DurationMs = (int)stopwatch.ElapsedMilliseconds,
-                    FinishedAtUtc = DateTime.UtcNow
-                },
-                cancellationToken: cancellationToken));
-
-            throw;
-        }
+            JobPublicId = publicId,
+            Status = ImportJobStatus.Queued
+        });
     }
 
     private static async Task<IResult> ListJobsAsync(
@@ -737,29 +976,64 @@ public static class ImportEndpoints
             });
         }
 
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+        var targetUserId = isAdmin ? request.UserId : actorUserId;
+        var startDateUtc = request.StartDateUtc;
+        var endDateUtc = request.EndDateUtc;
+        if (startDateUtc.HasValue && endDateUtc.HasValue && endDateUtc < startDateUtc)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["dateRange"] = ["EndDateUtc must be greater than StartDateUtc."]
+            });
+        }
+
         using var connection = connectionFactory.CreateConnection();
         await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
 
-        var isAdmin = IsAdmin(httpContext.User);
-        var actorUserId = ResolveActorUserId(httpContext.User);
+        var whereClauses = new List<string>();
+        var parameters = new DynamicParameters();
         var offset = (request.Page - 1) * request.PageSize;
+        parameters.Add("Offset", offset);
+        parameters.Add("PageSize", request.PageSize);
 
-        var listSql = isAdmin
-            ? ImportQueries.ListImportJobs
-            : ImportQueries.ListImportJobs.Replace("ORDER BY j.id DESC", "AND j.created_by_user_id = @CreatedByUserId ORDER BY j.id DESC");
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            whereClauses.Add("j.status = @Status");
+            parameters.Add("Status", request.Status.Trim());
+        }
 
-        var countSql = isAdmin
-            ? ImportQueries.CountImportJobs
-            : ImportQueries.CountImportJobs + " WHERE created_by_user_id = @CreatedByUserId";
+        if (startDateUtc.HasValue)
+        {
+            whereClauses.Add("j.created_at_utc >= @StartDateUtc");
+            parameters.Add("StartDateUtc", startDateUtc.Value);
+        }
+
+        if (endDateUtc.HasValue)
+        {
+            whereClauses.Add("j.created_at_utc <= @EndDateUtc");
+            parameters.Add("EndDateUtc", endDateUtc.Value);
+        }
+
+        if (targetUserId.HasValue)
+        {
+            whereClauses.Add("j.created_by_user_id = @CreatedByUserId");
+            parameters.Add("CreatedByUserId", targetUserId.Value);
+        }
+
+        var whereClause = whereClauses.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", whereClauses);
+        var listSql = ImportQueries.ListImportJobs.Replace("/**where**/", whereClause);
+        var countSql = ImportQueries.CountImportJobs.Replace("/**where**/", whereClause);
 
         var items = (await connection.QueryAsync<ImportJobRow>(new CommandDefinition(
             listSql,
-            new { Offset = offset, PageSize = request.PageSize, CreatedByUserId = actorUserId },
+            parameters,
             cancellationToken: cancellationToken))).ToArray();
 
         var total = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             countSql,
-            new { CreatedByUserId = actorUserId },
+            parameters,
             cancellationToken: cancellationToken));
 
         return Results.Ok(new ImportJobListResponse
@@ -806,25 +1080,328 @@ public static class ImportEndpoints
         return Results.Ok(new ImportJobDetailResponse
         {
             Id = job.Id,
+            JobPublicId = job.JobPublicId,
             Feature = job.Feature,
             FileName = job.FileName,
             CompanyId = job.CompanyId,
             Status = job.Status,
             TotalRows = job.TotalRows,
+            ProcessedRows = job.ProcessedRows,
             SuccessRows = job.SuccessRows,
             ErrorRows = job.ErrorRows,
+            ProgressPercent = CalculateProgressPercent(job.ProcessedRows, job.TotalRows),
             DurationMs = job.DurationMs,
+            CreatedAtUtc = job.CreatedAtUtc,
             StartedAtUtc = job.StartedAtUtc,
             FinishedAtUtc = job.FinishedAtUtc,
             CreatedByUserId = job.CreatedByUserId,
             Errors = errors.Select(e => new ImportRowErrorResponse
             {
                 LineNumber = e.LineNumber,
+                Field = ResolveErrorField(e),
                 Action = e.Action,
-                Document = e.Document,
+                Document = MaskDocument(e.Document ?? string.Empty),
                 Email = e.Email,
                 Message = e.Message
             }).ToArray()
+        });
+    }
+
+    private static async Task<IResult> GetJobByPublicIdAsync(
+        [FromRoute] Guid jobPublicId,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var job = await connection.QueryFirstOrDefaultAsync<ImportJobRow>(new CommandDefinition(
+            ImportQueries.GetImportJobByPublicId,
+            new { PublicId = jobPublicId },
+            cancellationToken: cancellationToken));
+
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        if (!isAdmin && job.CreatedByUserId != actorUserId)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(new ImportJobDetailResponse
+        {
+            Id = job.Id,
+            JobPublicId = job.JobPublicId,
+            Feature = job.Feature,
+            FileName = job.FileName,
+            CompanyId = job.CompanyId,
+            Status = job.Status,
+            TotalRows = job.TotalRows,
+            ProcessedRows = job.ProcessedRows,
+            SuccessRows = job.SuccessRows,
+            ErrorRows = job.ErrorRows,
+            ProgressPercent = CalculateProgressPercent(job.ProcessedRows, job.TotalRows),
+            DurationMs = job.DurationMs,
+            CreatedAtUtc = job.CreatedAtUtc,
+            StartedAtUtc = job.StartedAtUtc,
+            FinishedAtUtc = job.FinishedAtUtc,
+            CreatedByUserId = job.CreatedByUserId,
+            Errors = []
+        });
+    }
+
+    private static async Task<IResult> GetJobErrorsAsync(
+        [FromRoute] Guid jobPublicId,
+        [AsParameters] ImportJobErrorsRequest request,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (request.Page <= 0 || request.PageSize is < 1 or > 200)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["page"] = ["Page must be greater than zero and pageSize between 1 and 200."]
+            });
+        }
+
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var job = await connection.QueryFirstOrDefaultAsync<ImportJobRow>(new CommandDefinition(
+            ImportQueries.GetImportJobByPublicId,
+            new { PublicId = jobPublicId },
+            cancellationToken: cancellationToken));
+
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        if (!isAdmin && job.CreatedByUserId != actorUserId)
+        {
+            return Results.NotFound();
+        }
+
+        var offset = (request.Page - 1) * request.PageSize;
+        var parameters = new { ImportJobId = job.Id, Offset = offset, PageSize = request.PageSize };
+
+        var items = (await connection.QueryAsync<ImportJobErrorRow>(new CommandDefinition(
+            ImportQueries.ListImportErrors,
+            parameters,
+            cancellationToken: cancellationToken))).ToArray();
+
+        var total = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            ImportQueries.CountImportErrors,
+            new { ImportJobId = job.Id },
+            cancellationToken: cancellationToken));
+
+        return Results.Ok(new ImportJobErrorsResponse
+        {
+            Page = request.Page,
+            PageSize = request.PageSize,
+            Total = total,
+            Items = items.Select(e => new ImportRowErrorResponse
+            {
+                LineNumber = e.LineNumber,
+                Field = ResolveErrorField(e),
+                Action = e.Action,
+                Document = MaskDocument(e.Document ?? string.Empty),
+                Email = e.Email,
+                Message = e.Message
+            }).ToArray()
+        });
+    }
+
+    private static async Task<IResult> CancelImportJobAsync(
+        [FromRoute] Guid jobPublicId,
+        ISqlConnectionFactory connectionFactory,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var job = await connection.QueryFirstOrDefaultAsync<ImportJobRow>(new CommandDefinition(
+            ImportQueries.GetImportJobByPublicId,
+            new { PublicId = jobPublicId },
+            cancellationToken: cancellationToken));
+
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        if (!isAdmin && job.CreatedByUserId != actorUserId)
+        {
+            return Results.NotFound();
+        }
+
+        if (!string.Equals(job.Status, ImportJobStatus.Queued, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(job.Status, ImportJobStatus.Running, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = [$"Não é possível cancelar um job no status '{job.Status}'."]
+            });
+        }
+
+        var updated = await connection.ExecuteAsync(new CommandDefinition(
+            ImportQueries.RequestImportJobCancellation,
+            new
+            {
+                Id = job.Id,
+                Status = ImportJobStatus.CancellationRequested,
+                CancelRequested = true,
+                CancelRequestedAtUtc = DateTime.UtcNow,
+                AllowedStatuses = new[] { ImportJobStatus.Queued, ImportJobStatus.Running }
+            },
+            cancellationToken: cancellationToken));
+
+        if (updated == 0)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = ["Não foi possível solicitar o cancelamento. Atualize a tela e tente novamente."]
+            });
+        }
+
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+        var logger = loggerFactory.CreateLogger("ImportCancel");
+        logger.LogInformation(
+            "ImportCancelRequested JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} CorrelationId={CorrelationId}",
+            job.Id,
+            job.JobPublicId,
+            actorUserId,
+            correlationId);
+
+        return Results.Ok(new ImportJobActionResponse
+        {
+            JobPublicId = job.JobPublicId,
+            Status = ImportJobStatus.CancellationRequested,
+            Message = "Cancelamento solicitado. A importação será interrompida em instantes."
+        });
+    }
+
+    private static async Task<IResult> RetryImportJobAsync(
+        [FromRoute] Guid jobPublicId,
+        ISqlConnectionFactory connectionFactory,
+        ImportRabbitMqConnectionFactory rabbitMqConnectionFactory,
+        IOptions<ImportRabbitMqOptions> rabbitMqOptions,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(ImportQueries.EnsureImportTables, cancellationToken: cancellationToken));
+
+        var job = await connection.QueryFirstOrDefaultAsync<ImportJobRow>(new CommandDefinition(
+            ImportQueries.GetImportJobByPublicIdDetailed,
+            new { PublicId = jobPublicId },
+            cancellationToken: cancellationToken));
+
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = IsAdmin(httpContext.User);
+        var actorUserId = ResolveActorUserId(httpContext.User);
+
+        if (!isAdmin && job.CreatedByUserId != actorUserId)
+        {
+            return Results.NotFound();
+        }
+
+        if (!string.Equals(job.Status, ImportJobStatus.Failed, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(job.Status, ImportJobStatus.CompletedWithErrors, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = [$"Não é possível reprocessar um job no status '{job.Status}'."]
+            });
+        }
+
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(httpContext);
+        var logger = loggerFactory.CreateLogger("ImportRetry");
+        logger.LogInformation(
+            "ImportRetryRequested JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} CorrelationId={CorrelationId}",
+            job.Id,
+            job.JobPublicId,
+            actorUserId,
+            correlationId);
+
+        var newPublicId = Guid.NewGuid();
+        var jobRequest = ImportJobRequestFactory.CreateQueued(
+            newPublicId,
+            job.Feature,
+            job.FileName,
+            job.FilePath,
+            job.FileHashSha256,
+            job.CompanyId,
+            actorUserId,
+            DateTime.UtcNow,
+            correlationId,
+            retryOfImportJobId: job.Id);
+
+        var newJobId = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            ImportQueries.InsertImportJob,
+            jobRequest,
+            cancellationToken: cancellationToken));
+
+        PublishImportJob(rabbitMqConnectionFactory, rabbitMqOptions.Value, correlationId, newJobId, jobRequest);
+
+        logger.LogInformation(
+            "ImportRetryCreated JobId={JobId} JobPublicId={JobPublicId} RetryOfJobId={RetryOfJobId} RetryOfJobPublicId={RetryOfJobPublicId} UserId={UserId} CorrelationId={CorrelationId}",
+            newJobId,
+            newPublicId,
+            job.Id,
+            job.JobPublicId,
+            actorUserId,
+            correlationId);
+
+        var notificationId = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            ImportQueries.InsertImportNotification,
+            new
+            {
+                ImportJobId = newJobId,
+                UserId = actorUserId,
+                Title = "Importação reprocessada",
+                Message = "Uma nova execução da importação foi criada.",
+                Status = "Unread",
+                CreatedAtUtc = DateTime.UtcNow,
+                ReadAtUtc = (DateTime?)null
+            },
+            cancellationToken: cancellationToken));
+
+        logger.LogInformation(
+            "NotificationCreated NotificationId={NotificationId} JobId={JobId} JobPublicId={JobPublicId} UserId={UserId} Status={Status} CorrelationId={CorrelationId}",
+            notificationId,
+            newJobId,
+            newPublicId,
+            actorUserId,
+            ImportJobStatus.Queued,
+            correlationId);
+
+        return Results.Ok(new ImportJobActionResponse
+        {
+            JobPublicId = job.JobPublicId,
+            Status = ImportJobStatus.Queued,
+            Message = "Uma nova execução da importação foi criada.",
+            NewJobPublicId = newPublicId
         });
     }
 
@@ -859,7 +1436,7 @@ public static class ImportEndpoints
             RawLine = line,
             FirstName = NormalizeText(parts[0], 120),
             LastName = NormalizeText(parts[1], 120),
-            Document = NormalizeDigits(parts[2], 14),
+            Document = NormalizeDigits(parts[2], 11),
             Email = NormalizeEmail(parts[3]),
             Gender = NormalizeGender(parts[4]),
             BirthDate = NormalizeDate(parts[5]),
@@ -884,7 +1461,7 @@ public static class ImportEndpoints
             LineNumber = lineNumber,
             RawLine = line,
             Action = Safe(8).Trim(),
-            Document = NormalizeDigits(Safe(2), 14),
+            Document = NormalizeDigits(Safe(2), 11),
             Email = Safe(3).Trim()
         };
     }
@@ -920,7 +1497,7 @@ public static class ImportEndpoints
                 {
                     data.FirstName,
                     data.LastName,
-                    DocumentHash = ComputeMd5Hex(data.Document),
+                    data.Document,
                     data.Email,
                     Registration = BuildRegistration(data),
                     company.PartnerId,
@@ -945,7 +1522,7 @@ public static class ImportEndpoints
                     existing.Id,
                     data.FirstName,
                     data.LastName,
-                    DocumentHash = ComputeMd5Hex(data.Document),
+                    data.Document,
                     data.Email,
                     Registration = BuildRegistration(data),
                     company.PartnerId
@@ -980,9 +1557,14 @@ public static class ImportEndpoints
             throw new ValidationException("Last name is required.");
         }
 
-        if (data.Document.Length is not 11 and not 14)
+        if (data.Document.Length != 11)
         {
-            throw new ValidationException("Document must contain 11 or 14 digits.");
+            throw new ValidationException("CPF must contain 11 digits.");
+        }
+
+        if (!IsValidCpf(data.Document))
+        {
+            throw new ValidationException("CPF is invalid.");
         }
 
         if (!string.IsNullOrWhiteSpace(data.Email) && !Regex.IsMatch(data.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase))
@@ -1086,28 +1668,109 @@ public static class ImportEndpoints
         return NormalizeText(candidate, 1);
     }
 
-    private static string ComputeMd5Hex(string value)
+    private static bool IsValidCpf(string cpf)
     {
-        var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
-        var hash = MD5.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        if (cpf.Length != 11)
+        {
+            return false;
+        }
+
+        if (cpf.Distinct().Count() == 1)
+        {
+            return false;
+        }
+
+        var numbers = cpf.Select(c => c - '0').ToArray();
+        var sum = 0;
+        for (var i = 0; i < 9; i++)
+        {
+            sum += numbers[i] * (10 - i);
+        }
+
+        var remainder = sum % 11;
+        var digit1 = remainder < 2 ? 0 : 11 - remainder;
+        if (numbers[9] != digit1)
+        {
+            return false;
+        }
+
+        sum = 0;
+        for (var i = 0; i < 10; i++)
+        {
+            sum += numbers[i] * (11 - i);
+        }
+
+        remainder = sum % 11;
+        var digit2 = remainder < 2 ? 0 : 11 - remainder;
+        return numbers[10] == digit2;
     }
 
     private static ImportJobItemResponse ToJobItem(ImportJobRow row) => new()
     {
         Id = row.Id,
+        JobPublicId = row.JobPublicId,
         Feature = row.Feature,
         FileName = row.FileName,
         CompanyId = row.CompanyId,
         Status = row.Status,
         TotalRows = row.TotalRows,
+        ProcessedRows = row.ProcessedRows,
         SuccessRows = row.SuccessRows,
         ErrorRows = row.ErrorRows,
+        ProgressPercent = CalculateProgressPercent(row.ProcessedRows, row.TotalRows),
         DurationMs = row.DurationMs,
+        CreatedAtUtc = row.CreatedAtUtc,
         StartedAtUtc = row.StartedAtUtc,
         FinishedAtUtc = row.FinishedAtUtc,
         CreatedByUserId = row.CreatedByUserId
     };
+
+    private static decimal CalculateProgressPercent(int processedRows, int totalRows)
+    {
+        if (totalRows <= 0)
+        {
+            return 0m;
+        }
+
+        var percent = (decimal)processedRows / totalRows * 100m;
+        return Math.Round(percent, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static string? ResolveErrorField(ImportJobErrorRow error)
+    {
+        if (string.IsNullOrWhiteSpace(error.Message))
+        {
+            return null;
+        }
+
+        var message = error.Message.ToLowerInvariant();
+        if (message.Contains("cpf"))
+        {
+            return "cpf";
+        }
+
+        if (message.Contains("e-mail") || message.Contains("email"))
+        {
+            return "email";
+        }
+
+        if (message.Contains("first name") || message.Contains("nome"))
+        {
+            return "nome";
+        }
+
+        if (message.Contains("last name") || message.Contains("sobrenome"))
+        {
+            return "sobrenome";
+        }
+
+        if (message.Contains("birth date") || message.Contains("nascimento"))
+        {
+            return "dt_nascimento";
+        }
+
+        return null;
+    }
 
     private static bool IsAdmin(System.Security.Claims.ClaimsPrincipal user)
     {
@@ -1140,5 +1803,40 @@ public static class ImportEndpoints
         }
 
         return id;
+    }
+
+    private static string MaskDocument(string document)
+    {
+        if (string.IsNullOrWhiteSpace(document))
+        {
+            return string.Empty;
+        }
+
+        if (document.Length <= 4)
+        {
+            return new string('*', document.Length);
+        }
+
+        return new string('*', document.Length - 4) + document[^4..];
+    }
+
+    private static (string Title, string Message)? BuildNotification(string status, string fileName)
+    {
+        return status switch
+        {
+            ImportJobStatus.Completed => (
+                "Importação concluída",
+                $"A importação do arquivo {fileName} foi concluída com sucesso."),
+            ImportJobStatus.CompletedWithErrors => (
+                "Importação concluída com erros",
+                $"A importação do arquivo {fileName} foi concluída com erros. Consulte os detalhes."),
+            ImportJobStatus.Failed => (
+                "Importação falhou",
+                $"A importação do arquivo {fileName} falhou. Consulte os detalhes."),
+            ImportJobStatus.Cancelled => (
+                "Importação cancelada",
+                $"A importação do arquivo {fileName} foi cancelada."),
+            _ => null
+        };
     }
 }

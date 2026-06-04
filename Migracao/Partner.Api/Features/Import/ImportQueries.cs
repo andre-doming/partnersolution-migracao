@@ -235,5 +235,317 @@ public static class ImportQueries
             ativo = 'N'
         WHERE id = @Id;
         """;
+
+    public const string GetImportJobByPublicId = """
+        SELECT
+            j.id AS Id,
+            j.public_id AS PublicId,
+            j.feature AS Feature,
+            j.file_name AS FileName,
+            j.file_path AS FilePath,
+            j.file_hash_sha256 AS FileHashSha256,
+            j.company_id AS CompanyId,
+            j.status AS Status,
+            j.total_rows AS TotalRows,
+            j.processed_rows AS ProcessedRows,
+            j.success_rows AS SuccessRows,
+            j.error_rows AS ErrorRows,
+            j.duration_ms AS DurationMs,
+            j.started_at_utc AS StartedAtUtc,
+            j.finished_at_utc AS FinishedAtUtc,
+            j.created_by_user_id AS CreatedByUserId,
+            j.attempts AS Attempts,
+            j.last_error AS LastError,
+            j.correlation_id AS CorrelationId,
+            j.cancel_requested AS CancelRequested,
+            j.cancel_requested_at_utc AS CancelRequestedAtUtc,
+            j.cancelled_at_utc AS CancelledAtUtc,
+            j.retry_of_import_job_id AS RetryOfImportJobId
+        FROM dbo.ImportJobs j
+        WHERE j.public_id = @PublicId;
+        """;
+
+    public const string MarkImportJobRunning = """
+        UPDATE dbo.ImportJobs
+        SET
+            status = @Status,
+            locked_by = @LockedBy,
+            locked_at_utc = @LockedAtUtc,
+            last_heartbeat_at_utc = @LockedAtUtc
+        WHERE id = @Id
+          AND status = @ExpectedStatus;
+        """;
+
+    public const string UpdateImportJobStatus = """
+        UPDATE dbo.ImportJobs
+        SET
+            status = @Status,
+            finished_at_utc = @FinishedAtUtc,
+            duration_ms = @DurationMs,
+            last_error = @LastError,
+            cancelled_at_utc = @CancelledAtUtc,
+            cancel_requested = @CancelRequested,
+            cancel_requested_at_utc = @CancelRequestedAtUtc,
+            locked_by = NULL,
+            locked_at_utc = NULL,
+            last_heartbeat_at_utc = @FinishedAtUtc
+        WHERE id = @Id;
+        """;
+
+    public const string InsertImportNotification = """
+        INSERT INTO dbo.ImportNotifications
+        (
+            import_job_id,
+            user_id,
+            title,
+            message,
+            status,
+            created_at_utc,
+            read_at_utc
+        )
+        VALUES
+        (
+            @ImportJobId,
+            @UserId,
+            @Title,
+            @Message,
+            @Status,
+            @CreatedAtUtc,
+            @ReadAtUtc
+        );
+
+        SELECT CAST(SCOPE_IDENTITY() AS int);
+        """;
+
+    public const string TryInsertImportJobItem = """
+        INSERT INTO dbo.ImportJobItems
+        (
+            import_job_id,
+            seq,
+            line_hash,
+            status,
+            processed_at_utc,
+            error_id,
+            target_key
+        )
+        SELECT
+            @ImportJobId,
+            @Seq,
+            @LineHash,
+            @Status,
+            @ProcessedAtUtc,
+            @ErrorId,
+            @TargetKey
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM dbo.ImportJobItems
+            WHERE import_job_id = @ImportJobId
+              AND seq = @Seq
+        );
+
+        SELECT @@ROWCOUNT;
+        """;
+
+    public const string UpdateImportJobItem = """
+        UPDATE dbo.ImportJobItems
+        SET
+            status = @Status,
+            processed_at_utc = @ProcessedAtUtc,
+            error_id = @ErrorId,
+            target_key = @TargetKey
+        WHERE import_job_id = @ImportJobId
+          AND seq = @Seq;
+        """;
+
+    public const string InsertImportJobErrorWithId = """
+        INSERT INTO dbo.ImportJobErrors
+        (
+            import_job_id,
+            seq,
+            line_number,
+            error_code,
+            message,
+            raw_line,
+            action,
+            document,
+            email,
+            created_at_utc
+        )
+        VALUES
+        (
+            @ImportJobId,
+            @Seq,
+            @LineNumber,
+            @ErrorCode,
+            @Message,
+            @RawLine,
+            @Action,
+            @Document,
+            @Email,
+            @CreatedAtUtc
+        );
+
+        SELECT CAST(SCOPE_IDENTITY() AS int);
+        """;
+
+    public const string UpdateImportJobProgress = """
+        UPDATE dbo.ImportJobs
+        SET
+            processed_rows = @ProcessedRows,
+            success_rows = @SuccessRows,
+            error_rows = @ErrorRows,
+            last_heartbeat_at_utc = @LastHeartbeatAtUtc
+        WHERE id = @Id;
+        """;
+
+    public const string GetImportJobCancellationStatus = """
+        SELECT
+            j.cancel_requested AS CancelRequested,
+            j.status AS Status
+        FROM dbo.ImportJobs j
+        WHERE j.id = @Id;
+        """;
+
+    public const string UpdateImportJobCancellation = """
+        UPDATE dbo.ImportJobs
+        SET
+            status = @Status,
+            cancel_requested = @CancelRequested,
+            cancel_requested_at_utc = @CancelRequestedAtUtc,
+            cancelled_at_utc = @CancelledAtUtc,
+            last_heartbeat_at_utc = @CancelledAtUtc
+        WHERE id = @Id;
+        """;
+
+    public const string ListImportNotifications = """
+        SELECT
+            n.id AS Id,
+            n.import_job_id AS ImportJobId,
+            n.user_id AS UserId,
+            n.title AS Title,
+            n.message AS Message,
+            n.status AS Status,
+            n.created_at_utc AS CreatedAtUtc,
+            n.read_at_utc AS ReadAtUtc,
+            j.public_id AS ImportJobPublicId
+        FROM dbo.ImportNotifications n
+        JOIN dbo.ImportJobs j ON n.import_job_id = j.id
+        WHERE n.user_id = @UserId
+        ORDER BY n.created_at_utc DESC;
+        """;
+
+    public const string GetImportNotificationById = """
+        SELECT
+            n.id AS Id,
+            n.import_job_id AS ImportJobId,
+            n.user_id AS UserId,
+            n.title AS Title,
+            n.message AS Message,
+            n.status AS Status,
+            n.created_at_utc AS CreatedAtUtc,
+            n.read_at_utc AS ReadAtUtc,
+            j.public_id AS ImportJobPublicId
+        FROM dbo.ImportNotifications n
+        JOIN dbo.ImportJobs j ON n.import_job_id = j.id
+        WHERE n.id = @Id
+          AND n.user_id = @UserId;
+        """;
+
+    public const string MarkImportNotificationRead = """
+        UPDATE dbo.ImportNotifications
+        SET
+            status = @Status,
+            read_at_utc = @ReadAtUtc
+        WHERE id = @Id
+          AND user_id = @UserId
+          AND status = @UnreadStatus;
+        """;
+
+    public const string MarkAllImportNotificationsRead = """
+        UPDATE dbo.ImportNotifications
+        SET
+            status = @Status,
+            read_at_utc = @ReadAtUtc
+        WHERE user_id = @UserId
+          AND status = @UnreadStatus;
+        """;
+
+    public const string FindJobByIdempotencyKey = """
+        SELECT TOP 1
+            j.id AS Id,
+            j.public_id AS PublicId,
+            j.status AS Status,
+            j.started_at_utc AS StartedAtUtc
+        FROM dbo.ImportJobs j
+        WHERE j.company_id = @CompanyId
+          AND j.feature = @Feature
+          AND j.file_hash_sha256 = @FileHashSha256
+        ORDER BY j.started_at_utc DESC;
+        """;
+
+    public const string ListImportErrors = """
+        SELECT
+            e.id AS Id,
+            e.import_job_id AS ImportJobId,
+            e.seq AS Seq,
+            e.line_number AS LineNumber,
+            e.error_code AS ErrorCode,
+            e.message AS Message,
+            e.raw_line AS RawLine,
+            e.action AS Action,
+            e.document AS Document,
+            e.email AS Email,
+            e.created_at_utc AS CreatedAtUtc
+        FROM dbo.ImportJobErrors e
+        WHERE e.import_job_id = @ImportJobId
+        ORDER BY e.seq ASC
+        OFFSET @Offset ROWS
+        FETCH NEXT @PageSize ROWS ONLY;
+        """;
+
+    public const string CountImportErrors = """
+        SELECT COUNT(1)
+        FROM dbo.ImportJobErrors
+        WHERE import_job_id = @ImportJobId;
+        """;
+
+    public const string RequestImportJobCancellation = """
+        UPDATE dbo.ImportJobs
+        SET
+            status = @Status,
+            cancel_requested = @CancelRequested,
+            cancel_requested_at_utc = @CancelRequestedAtUtc
+        WHERE id = @Id
+          AND status IN ('Queued', 'Running');
+        """;
+
+    public const string GetImportJobByPublicIdDetailed = """
+        SELECT
+            j.id AS Id,
+            j.public_id AS JobPublicId,
+            j.feature AS Feature,
+            j.file_name AS FileName,
+            j.file_path AS FilePath,
+            j.file_hash_sha256 AS FileHashSha256,
+            j.company_id AS CompanyId,
+            j.status AS Status,
+            j.total_rows AS TotalRows,
+            j.processed_rows AS ProcessedRows,
+            j.success_rows AS SuccessRows,
+            j.error_rows AS ErrorRows,
+            j.duration_ms AS DurationMs,
+            j.started_at_utc AS StartedAtUtc,
+            j.finished_at_utc AS FinishedAtUtc,
+            j.created_by_user_id AS CreatedByUserId,
+            j.attempts AS Attempts,
+            j.last_error AS LastError,
+            j.correlation_id AS CorrelationId,
+            j.cancel_requested AS CancelRequested,
+            j.cancel_requested_at_utc AS CancelRequestedAtUtc,
+            j.cancelled_at_utc AS CancelledAtUtc,
+            j.retry_of_import_job_id AS RetryOfImportJobId
+        FROM dbo.ImportJobs j
+        WHERE j.public_id = @PublicId;
+        """;
 }
 

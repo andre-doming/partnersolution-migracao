@@ -42,6 +42,7 @@ export interface ImportProcessSelectedRequest {
 
 export interface ImportRowError {
   lineNumber: number;
+  field?: string | null;
   action?: string | null;
   document?: string | null;
   email?: string | null;
@@ -51,18 +52,26 @@ export interface ImportRowError {
 export interface ImportJobListRequest {
   page: number;
   pageSize: number;
+  status?: string | null;
+  startDateUtc?: string | null;
+  endDateUtc?: string | null;
+  userId?: number | null;
 }
 
 export interface ImportJobItem {
   id: number;
+  jobPublicId: string;
   feature: string;
   fileName: string;
   companyId: number;
   status: string;
   totalRows: number;
+  processedRows: number;
   successRows: number;
   errorRows: number;
+  progressPercent: number;
   durationMs: number;
+  createdAtUtc: string;
   startedAtUtc: string;
   finishedAtUtc?: string | null;
   createdByUserId: number;
@@ -79,6 +88,13 @@ export interface ImportJobDetail extends ImportJobItem {
   errors: ImportRowError[];
 }
 
+export interface ImportJobErrorsResponse {
+  page: number;
+  pageSize: number;
+  total: number;
+  items: ImportRowError[];
+}
+
 export interface ImportCompanyLookupItem {
   id: number;
   name: string;
@@ -87,4 +103,16 @@ export interface ImportCompanyLookupItem {
 export interface ImportLookupResponse {
   companies: ImportCompanyLookupItem[];
 }
+
+export interface ImportNotification {
+  id: number;
+  title: string;
+  message: string;
+  status: string;
+  createdAtUtc: string;
+  importJobPublicId: string;
+}
+
+
+
 

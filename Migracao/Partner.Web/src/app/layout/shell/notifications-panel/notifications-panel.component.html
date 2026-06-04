@@ -1,0 +1,47 @@
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <h3>Notificações</h3>
+      <p>{{ unreadCount }} não lidas</p>
+    </div>
+    <button mat-stroked-button color="primary" type="button" (click)="markAllRead.emit()" [disabled]="unreadCount === 0">
+      Marcar todas como lidas
+    </button>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <div class="panel-body" *ngIf="notifications.length > 0; else emptyState">
+    <mat-list>
+      <mat-list-item *ngFor="let notification of notifications; trackBy: trackById">
+        <div class="notification" [class.unread]="isUnread(notification)">
+          <div class="notification-header">
+            <span class="title">{{ notification.title }}</span>
+            <mat-chip color="accent" [ngClass]="{ unread: isUnread(notification) }" selected>
+              {{ isUnread(notification) ? 'Nova' : 'Lida' }}
+            </mat-chip>
+          </div>
+          <p class="message">{{ notification.message }}</p>
+          <div class="actions">
+            <span class="date">{{ notification.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}</span>
+            <div class="buttons">
+              <button mat-button color="primary" type="button" (click)="openJob.emit(notification)">
+                Visualizar
+              </button>
+              <button mat-button type="button" (click)="markRead.emit(notification)" [disabled]="!isUnread(notification)">
+                Marcar como lida
+              </button>
+            </div>
+          </div>
+        </div>
+      </mat-list-item>
+    </mat-list>
+  </div>
+
+  <ng-template #emptyState>
+    <div class="empty-state">
+      <mat-icon>notifications</mat-icon>
+      <p>Nenhuma notificação disponível.</p>
+    </div>
+  </ng-template>
+</div>

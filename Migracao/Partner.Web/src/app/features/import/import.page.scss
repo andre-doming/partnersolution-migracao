@@ -18,12 +18,30 @@
   grid-column: 1 / -1;
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .summary,
 .history,
 .preview {
   margin-top: 1rem;
+}
+
+.job-detail {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.detail-card {
+  padding: 0.5rem 0.75rem;
 }
 
 .history-toggle {
@@ -37,6 +55,61 @@
   margin-bottom: 0.75rem;
 }
 
+.progress-label {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #5f6368;
+}
+
+.history-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.history-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.file-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-Queued {
+  background: rgba(0, 123, 255, 0.12);
+  color: #0b5ed7;
+}
+
+.status-Running {
+  background: rgba(255, 193, 7, 0.2);
+  color: #b8860b;
+}
+
+.status-Completed {
+  background: rgba(40, 167, 69, 0.2);
+  color: #1e7e34;
+}
+
+.status-CompletedWithErrors {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ef6c00;
+}
+
+.status-Failed {
+  background: rgba(220, 53, 69, 0.2);
+  color: #b21f2d;
+}
+
+.status-Cancelled {
+  background: rgba(108, 117, 125, 0.2);
+  color: #6c757d;
+}
+
 .table-wrapper {
   overflow: auto;
 }
@@ -46,7 +119,12 @@ table {
   min-width: 1100px;
 }
 
+.job-detail table {
+  min-width: 900px;
+}
+
 mat-paginator {
   margin-top: 0.75rem;
 }
+
 

@@ -6,6 +6,7 @@ using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Features.Auth;
 using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
+using Partner.Api.Infrastructure.Import;
 using Partner.Api.Infrastructure.Security;
 using Partner.Api.Middleware;
 using System.Security.Claims;
@@ -24,6 +25,8 @@ public static class ServiceCollectionExtensions
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
         services.Configure<PasswordLockoutOptions>(configuration.GetSection(PasswordLockoutOptions.SectionName));
+        services.Configure<ImportRabbitMqOptions>(configuration.GetSection(ImportRabbitMqOptions.SectionName));
+        services.Configure<ImportStorageOptions>(configuration.GetSection(ImportStorageOptions.SectionName));
 
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         EnsureJwtConfigurationIsSafe(jwtOptions, environment);
@@ -243,6 +246,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<RateLimitingMetrics>();
         services.AddSingleton(policyRegistry);
         services.AddValidatorsFromAssemblyContaining<AuthLoginRequestValidator>(ServiceLifetime.Scoped, includeInternalTypes: true);
+        services.AddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IConfiguration>()
+                .GetSection(ImportRabbitMqOptions.SectionName)
+                .Get<ImportRabbitMqOptions>() ?? new ImportRabbitMqOptions();
+            return new ImportRabbitMqConnectionFactory(options);
+        });
+        services.AddScoped<ImportJobRepository>();
+        services.AddHostedService<ImportWorker>();
 
         return services;
     }
