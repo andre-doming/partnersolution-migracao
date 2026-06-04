@@ -7,6 +7,7 @@ using Partner.Api.Features.Auth;
 using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Import;
+using Partner.Api.Infrastructure.Integrations.Vtex;
 using Partner.Api.Infrastructure.Security;
 using Partner.Api.Middleware;
 using System.Security.Claims;
@@ -27,6 +28,8 @@ public static class ServiceCollectionExtensions
         services.Configure<PasswordLockoutOptions>(configuration.GetSection(PasswordLockoutOptions.SectionName));
         services.Configure<ImportRabbitMqOptions>(configuration.GetSection(ImportRabbitMqOptions.SectionName));
         services.Configure<ImportStorageOptions>(configuration.GetSection(ImportStorageOptions.SectionName));
+        services.Configure<VtexOptions>(configuration.GetSection(VtexOptions.SectionName));
+        services.Configure<VtexRabbitMqOptions>(configuration.GetSection(VtexRabbitMqOptions.SectionName));
 
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         EnsureJwtConfigurationIsSafe(jwtOptions, environment);
@@ -255,6 +258,18 @@ public static class ServiceCollectionExtensions
         });
         services.AddScoped<ImportJobRepository>();
         services.AddHostedService<ImportWorker>();
+
+        // Registrar infraestrutura VTEX
+        services.AddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IConfiguration>()
+                .GetSection(VtexRabbitMqOptions.SectionName)
+                .Get<VtexRabbitMqOptions>() ?? new VtexRabbitMqOptions();
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<VtexRabbitMqConnectionFactory>();
+            return new VtexRabbitMqConnectionFactory(options, logger);
+        });
+        services.AddScoped<IVtexClient, VtexClient>();
+        services.AddHostedService<VtexSyncWorker>();
 
         return services;
     }

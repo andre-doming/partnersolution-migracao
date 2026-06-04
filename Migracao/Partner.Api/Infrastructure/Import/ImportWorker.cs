@@ -6,6 +6,7 @@ using Dapper;
 using FluentValidation;
 using Partner.Api.Features.Import;
 using Partner.Api.Infrastructure.Database;
+using Partner.Api.Infrastructure.Integrations.Vtex;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -340,6 +341,52 @@ public sealed class ImportWorker : BackgroundService
                 counters.ErrorRows,
                 correlationId,
                 (int)stopwatch.ElapsedMilliseconds);
+
+            // Publicar para VTEX se importação foi bem-sucedida (Completed)
+            if (finalStatus == ImportJobStatus.Completed)
+            {
+                try
+                {
+                    using var vtexScope = _scopeFactory.CreateScope();
+                    var vtexOptions = vtexScope.ServiceProvider.GetRequiredService<IOptions<VtexOptions>>().Value;
+                    var vtexRabbitOptions = vtexScope.ServiceProvider.GetRequiredService<IOptions<VtexRabbitMqOptions>>().Value;
+                    var vtexConnectionFactory = vtexScope.ServiceProvider.GetRequiredService<VtexRabbitMqConnectionFactory>();
+                    var vtexLogger = vtexScope.ServiceProvider.GetRequiredService<ILogger<ImportWorker>>();
+
+                    var vtexMessage = new VtexSyncMessage
+                    {
+                        MessageId = Guid.NewGuid().ToString("N"),
+                        CorrelationId = correlationId,
+                        JobId = job.Id,
+                        JobPublicId = job.PublicId,
+                        Feature = job.Feature,
+                        CompanyId = job.CompanyId,
+                        UserId = job.CreatedByUserId,
+                        TotalRows = counters.TotalRows,
+                        SuccessRows = counters.SuccessRows,
+                        ErrorRows = counters.ErrorRows,
+                        DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                        CompletedAtUtc = DateTime.UtcNow,
+                        JobDataUri = $"/api/import/jobs/{job.PublicId}"
+                    };
+
+                    VtexSyncPublisher.PublishIfEnabled(
+                        vtexOptions,
+                        vtexConnectionFactory,
+                        vtexRabbitOptions,
+                        vtexMessage,
+                        vtexLogger);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to publish VTEX sync message for completed import. JobId={JobId} JobPublicId={JobPublicId}",
+                        job.Id,
+                        job.PublicId);
+                    // Não abortar processamento do Import mesmo se VTEX falhar
+                }
+            }
 
             _channel.BasicAck(args.DeliveryTag, false);
         }
