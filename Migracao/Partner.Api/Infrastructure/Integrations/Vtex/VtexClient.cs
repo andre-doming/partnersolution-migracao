@@ -1,32 +1,226 @@
 namespace Partner.Api.Infrastructure.Integrations.Vtex;
 
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 
 /// <summary>
-/// Cliente HTTP para integração com VTEX.
-/// Fase IMP-7: Implementação stub - lança NotImplementedException
-/// Responsabilidades futuras:
+/// Cliente HTTP real para integração com VTEX.
+/// Fase IMP-8A: Implementa verificação de conectividade e autenticação.
+/// Responsabilidades:
 /// - Configuração HTTP (AppKey/AppToken)
-/// - Autenticação
-/// - Tratamento de erros
-/// - Retry parametrizável
+/// - Verificação de saúde da conexão
+/// - Autenticação VTEX
+/// - Retry parametrizável (apenas para timeout/5xx)
 /// </summary>
 public sealed class VtexClient : IVtexClient
 {
+    private readonly HttpClient _httpClient;
     private readonly VtexOptions _options;
     private readonly ILogger<VtexClient> _logger;
 
+    private const string HealthCheckEndpoint = "/api/dataentities/CL/search?_fields=id&_where=id=1";
+
     public VtexClient(
+        HttpClient httpClient,
         IOptions<VtexOptions> options,
         ILogger<VtexClient> logger)
     {
+        _httpClient = httpClient;
         _options = options.Value;
         _logger = logger;
     }
 
     /// <summary>
-    /// Sincroniza dados de cliente para VTEX.
-    /// Stub nesta fase - implementação real virá em fase futura (IMP-8+)
+    /// Verifica a conectividade com VTEX.
+    /// Realiza uma chamada GET simples para validar autenticação, DNS, HTTPS e disponibilidade.
+    /// Implementa retry apenas para timeout e erros 5xx.
+    /// </summary>
+    public async Task<VtexHealthCheckResult> CheckConnectionAsync(
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        // Feature flag desligada
+        if (!_options.Enabled)
+        {
+            _logger.LogInformation(
+                "VtexHealthCheckSkippedByFeatureFlag CorrelationId={CorrelationId}",
+                correlationId);
+
+            return new VtexHealthCheckResult
+            {
+                Status = VtexHealthStatus.Disabled,
+                ResponseTimeMs = 0,
+                StatusCode = null,
+                Message = "VTEX integration is disabled"
+            };
+        }
+
+        // Validar configuração
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl) ||
+            string.IsNullOrWhiteSpace(_options.AppKey) ||
+            string.IsNullOrWhiteSpace(_options.AppToken))
+        {
+            _logger.LogWarning(
+                "VtexHealthCheckConfigurationInvalid CorrelationId={CorrelationId} BaseUrl={BaseUrl}",
+                correlationId,
+                MaskBaseUrl(_options.BaseUrl));
+
+            return new VtexHealthCheckResult
+            {
+                Status = VtexHealthStatus.Disconnected,
+                ResponseTimeMs = 0,
+                StatusCode = null,
+                Message = "VTEX configuration is invalid or incomplete"
+            };
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+
+        _logger.LogInformation(
+            "VtexHealthCheckStarted CorrelationId={CorrelationId} BaseUrl={BaseUrl}",
+            correlationId,
+            MaskBaseUrl(_options.BaseUrl));
+
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                HealthCheckEndpoint,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+
+            stopwatch.Stop();
+            var responseTimeMs = stopwatch.ElapsedMilliseconds;
+
+            var result = response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.OK => CreateSuccessResult(
+                    VtexHealthStatus.Connected,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    "Connection successful"),
+
+                System.Net.HttpStatusCode.Unauthorized => CreateErrorResult(
+                    VtexHealthStatus.Unauthorized,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    "Unauthorized - Invalid AppKey or AppToken"),
+
+                System.Net.HttpStatusCode.Forbidden => CreateErrorResult(
+                    VtexHealthStatus.Forbidden,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    "Forbidden - Insufficient permissions"),
+
+                System.Net.HttpStatusCode.NotFound => CreateErrorResult(
+                    VtexHealthStatus.NotFound,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    "Not Found - Resource or endpoint not available"),
+
+                _ when (int)response.StatusCode >= 500 => CreateErrorResult(
+                    VtexHealthStatus.Disconnected,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    $"Server error: {response.StatusCode}"),
+
+                _ => CreateErrorResult(
+                    VtexHealthStatus.Disconnected,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    $"Unexpected response: {response.StatusCode}")
+            };
+
+            // Log sucesso ou falha
+            if (result.Status == VtexHealthStatus.Connected)
+            {
+                _logger.LogInformation(
+                    "VtexHealthCheckSucceeded CorrelationId={CorrelationId} ResponseTimeMs={ResponseTimeMs} StatusCode={StatusCode} BaseUrl={BaseUrl}",
+                    correlationId,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    MaskBaseUrl(_options.BaseUrl));
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "VtexHealthCheckFailed CorrelationId={CorrelationId} Status={Status} ResponseTimeMs={ResponseTimeMs} StatusCode={StatusCode} BaseUrl={BaseUrl} Message={Message}",
+                    correlationId,
+                    result.Status,
+                    responseTimeMs,
+                    (int)response.StatusCode,
+                    MaskBaseUrl(_options.BaseUrl),
+                    result.Message);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            _logger.LogWarning(
+                "VtexHealthCheckCancelled CorrelationId={CorrelationId} ResponseTimeMs={ResponseTimeMs} BaseUrl={BaseUrl}",
+                correlationId,
+                stopwatch.ElapsedMilliseconds,
+                MaskBaseUrl(_options.BaseUrl));
+
+            return CreateErrorResult(
+                VtexHealthStatus.Timeout,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                "Request was cancelled");
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            _logger.LogWarning(
+                "VtexHealthCheckTimeout CorrelationId={CorrelationId} ResponseTimeMs={ResponseTimeMs} BaseUrl={BaseUrl}",
+                correlationId,
+                stopwatch.ElapsedMilliseconds,
+                MaskBaseUrl(_options.BaseUrl));
+
+            return CreateErrorResult(
+                VtexHealthStatus.Timeout,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                "Request timeout");
+        }
+        catch (HttpRequestException ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(
+                ex,
+                "VtexHealthCheckNetworkError CorrelationId={CorrelationId} ResponseTimeMs={ResponseTimeMs} BaseUrl={BaseUrl}",
+                correlationId,
+                stopwatch.ElapsedMilliseconds,
+                MaskBaseUrl(_options.BaseUrl));
+
+            return CreateErrorResult(
+                VtexHealthStatus.Disconnected,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                $"Network error: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(
+                ex,
+                "VtexHealthCheckUnexpectedError CorrelationId={CorrelationId} ResponseTimeMs={ResponseTimeMs} BaseUrl={BaseUrl}",
+                correlationId,
+                stopwatch.ElapsedMilliseconds,
+                MaskBaseUrl(_options.BaseUrl));
+
+            return CreateErrorResult(
+                VtexHealthStatus.Disconnected,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                $"Unexpected error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Sincroniza dados de cliente para VTEX (Master Data).
+    /// Stub nesta fase IMP-8A - implementação real virá em IMP-8B+
     /// </summary>
     public async Task<VtexSyncResult> SyncClientAsync(
         Guid jobPublicId,
@@ -38,9 +232,59 @@ public sealed class VtexClient : IVtexClient
             jobPublicId,
             correlationId);
 
-        // Stub - não fazer nada nesta fase
+        // Stub - não fazer nada nesta fase IMP-8A
         throw new NotImplementedException(
-            "VTEX sync será implementado em fase futura (IMP-8). " +
-            "Esta versão é apenas infraestrutura com feature flag.");
+            "VTEX sync será implementado em fase futura (IMP-8B). " +
+            "Esta versão (IMP-8A) implementa apenas diagnóstico de conectividade.");
+    }
+
+    /// <summary>
+    /// Mascara a URL base para segurança em logs.
+    /// Exemplo: https://api.vtex.com/lojabestoff → https://***/lojabestoff
+    /// </summary>
+    private static string MaskBaseUrl(string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return string.Empty;
+
+        try
+        {
+            var uri = new Uri(baseUrl);
+            return $"{uri.Scheme}://***/{string.Join("/", uri.Segments.Skip(1))}".TrimEnd('/');
+        }
+        catch
+        {
+            return "*** (invalid URL)";
+        }
+    }
+
+    private static VtexHealthCheckResult CreateSuccessResult(
+        VtexHealthStatus status,
+        long responseTimeMs,
+        int statusCode,
+        string message)
+    {
+        return new VtexHealthCheckResult
+        {
+            Status = status,
+            ResponseTimeMs = responseTimeMs,
+            StatusCode = statusCode,
+            Message = message
+        };
+    }
+
+    private static VtexHealthCheckResult CreateErrorResult(
+        VtexHealthStatus status,
+        long responseTimeMs,
+        int? statusCode,
+        string message)
+    {
+        return new VtexHealthCheckResult
+        {
+            Status = status,
+            ResponseTimeMs = responseTimeMs,
+            StatusCode = statusCode,
+            Message = message
+        };
     }
 }

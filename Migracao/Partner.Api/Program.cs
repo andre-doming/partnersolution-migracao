@@ -3,6 +3,7 @@ using Partner.Api.Features.Auth.Mfa;
 using Partner.Api.Features.Clients;
 using Partner.Api.Features.Companies;
 using Partner.Api.Features.Import;
+using Partner.Api.Features.Integrations;
 using Partner.Api.Features.Users;
 using Partner.Api.Infrastructure.Database;
 using Partner.Api.Infrastructure.Health;
@@ -111,6 +112,7 @@ app.MapUserEndpoints();
 app.MapCompanyEndpoints();
 app.MapClientEndpoints();
 app.MapImportEndpoints();
+app.MapVtexEndpoints();
 
 app.Run();
 

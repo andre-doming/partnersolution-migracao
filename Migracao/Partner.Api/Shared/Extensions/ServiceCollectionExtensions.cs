@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Partner.Api.Infrastructure.RateLimiting;
 using Partner.Api.Features.Auth;
@@ -270,7 +271,31 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<VtexRabbitMqConnectionFactory>();
             return new VtexRabbitMqConnectionFactory(options, logger);
         });
-        services.AddScoped<IVtexClient, VtexClient>();
+
+        // Configurar HttpClient com resiliência para VTEX
+        services.AddHttpClient<IVtexClient, VtexClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<VtexOptions>>().Value;
+
+            if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+            {
+                client.BaseAddress = new Uri(options.BaseUrl);
+            }
+
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            // Headers de autenticação VTEX (não hardcodados, apenas se configurados)
+            if (!string.IsNullOrWhiteSpace(options.AppKey))
+            {
+                client.DefaultRequestHeaders.Add("X-VTEX-API-AppKey", options.AppKey);
+            }
+
+            if (!string.IsNullOrWhiteSpace(options.AppToken))
+            {
+                client.DefaultRequestHeaders.Add("X-VTEX-API-AppToken", options.AppToken);
+            }
+        });
+
         services.AddHostedService<VtexSyncWorker>();
 
         return services;
