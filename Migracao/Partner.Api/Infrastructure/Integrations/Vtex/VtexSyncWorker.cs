@@ -152,19 +152,38 @@ public sealed class VtexSyncWorker : BackgroundService
                 return;
             }
 
-            // Fase IMP-7: apenas registrar evento, não processar
-            _logger.LogInformation(
-                "VtexSyncWorker phase IMP-7: stub mode. CorrelationId={CorrelationId} JobPublicId={JobPublicId}",
-                correlationId,
-                message.JobPublicId);
+            // Fase IMP-8B1: Processar sincronização com VTEX
+            using var scope = _scopeFactory.CreateAsyncScope();
+            var vtexClient = scope.ServiceProvider.GetRequiredService<IVtexClient>();
 
-            // ACK mensagem (não será reprocessada)
+            var syncResult = await vtexClient.SyncClientAsync(
+                message.JobPublicId,
+                correlationId,
+                CancellationToken.None);
+
+            // ACK mensagem após processar
             _channel.BasicAck(args.DeliveryTag, false);
 
             stopwatch.Stop();
-            _logger.LogInformation(
-                "VtexSync message processed (stub). ElapsedMs={ElapsedMs}",
-                stopwatch.ElapsedMilliseconds);
+
+            if (syncResult.Success)
+            {
+                _logger.LogInformation(
+                    "VtexSyncCompleted CorrelationId={CorrelationId} JobPublicId={JobPublicId} ElapsedMs={ElapsedMs} AttemptCount={AttemptCount}",
+                    correlationId,
+                    message.JobPublicId,
+                    stopwatch.ElapsedMilliseconds,
+                    syncResult.AttemptCount);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "VtexSyncFailed CorrelationId={CorrelationId} JobPublicId={JobPublicId} ElapsedMs={ElapsedMs} Error={Error}",
+                    correlationId,
+                    message.JobPublicId,
+                    stopwatch.ElapsedMilliseconds,
+                    syncResult.ErrorMessage);
+            }
         }
         catch (Exception ex)
         {
