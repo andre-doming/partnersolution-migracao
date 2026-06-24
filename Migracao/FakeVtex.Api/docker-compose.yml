@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  fake-vtex-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fake-vtex-api
+    ports:
+      - "7001:7001"
+    environment:
+      - FAILURE_RATE=1
+      - FORCED_FAILURE_MODE=none
+      - LOG_LEVEL=INFO
+      - PERSIST_DATA=true
+      - LATENCY_MS=0
+      - RATE_LIMIT_PER_MINUTE=0
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "X-VTEX-API-AppKey: test", "-H", "X-VTEX-API-AppToken: test", "http://localhost:7001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

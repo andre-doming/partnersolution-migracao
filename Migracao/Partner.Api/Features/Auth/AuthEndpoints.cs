@@ -51,6 +51,12 @@ public static class AuthEndpoints
         }
 
         using var connection = connectionFactory.CreateConnection();
+        
+        // Ensure MFA tables exist
+        await connection.ExecuteAsync(new CommandDefinition(
+            MfaQueries.EnsureMfaTables,
+            cancellationToken: cancellationToken));
+        
         var user = await connection.QueryFirstOrDefaultAsync<AuthUser>(
             new CommandDefinition(AuthQueries.GetUserByLogin, new { request.Login }, cancellationToken: cancellationToken));
 

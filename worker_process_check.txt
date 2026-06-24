@@ -1,0 +1,5 @@
+
+ProcessId Name                      CommandLine
+--------- ----                      -----------
+    24532 Partner.Import.Worker.exe "D:\Dev\PartnerTools\partnersolution\Migracao\Partner.Import.Worker\bin\Debug\net8.0\Partner.Import.Worker.exe"
+

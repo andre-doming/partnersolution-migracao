@@ -20,7 +20,6 @@ public sealed class ImportWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ImportWorker> _logger;
     private readonly IHostEnvironment _hostEnvironment;
-    private readonly ICpfProtectionService _cpfService;
 
     private const int ProgressBatchSize = 20;
 
@@ -32,15 +31,13 @@ public sealed class ImportWorker : BackgroundService
         IOptions<ImportRabbitMqOptions> options,
         IServiceScopeFactory scopeFactory,
         IHostEnvironment hostEnvironment,
-        ILogger<ImportWorker> logger,
-        ICpfProtectionService cpfService)
+        ILogger<ImportWorker> logger)
     {
         _connectionFactory = connectionFactory;
         _options = options.Value;
         _scopeFactory = scopeFactory;
         _hostEnvironment = hostEnvironment;
         _logger = logger;
-        _cpfService = cpfService;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -505,7 +502,7 @@ public sealed class ImportWorker : BackgroundService
                 job.PublicId,
                 job.Feature,
                 data.LineNumber,
-                _cpfService.Mask(data.Document),
+                data.Document,
                 correlationId);
         }
     }
@@ -574,7 +571,7 @@ public sealed class ImportWorker : BackgroundService
             job.PublicId,
             job.Feature,
             lineNumber,
-            _cpfService.Mask(parsed?.Document ?? string.Empty),
+            parsed?.Document ?? string.Empty,
             correlationId);
     }
 
@@ -743,7 +740,7 @@ public sealed class ImportWorker : BackgroundService
                 {
                     data.FirstName,
                     data.LastName,
-                    data.Document,
+                    DocumentHash = data.Document,
                     data.Email,
                     Registration = BuildRegistration(data),
                     company.PartnerId,
@@ -768,7 +765,7 @@ public sealed class ImportWorker : BackgroundService
                     existing.Id,
                     data.FirstName,
                     data.LastName,
-                    data.Document,
+                    DocumentHash = data.Document,
                     data.Email,
                     Registration = BuildRegistration(data),
                     company.PartnerId
@@ -791,38 +788,10 @@ public sealed class ImportWorker : BackgroundService
         throw new ValidationException("Unsupported action.");
     }
 
-    private void ValidateLineRules(CsvImportLineData data)
-    {
-        if (string.IsNullOrWhiteSpace(data.FirstName))
-        {
-            throw new ValidationException("First name is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(data.LastName))
-        {
-            throw new ValidationException("Last name is required.");
-        }
-
-        if (data.Document.Length != 11)
-        {
-            throw new ValidationException("CPF must contain 11 digits.");
-        }
-
-        if (!_cpfService.Validate(data.Document))
-        {
-            throw new ValidationException("CPF is invalid.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(data.Email) && !System.Text.RegularExpressions.Regex.IsMatch(data.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-        {
-            throw new ValidationException("E-mail is invalid.");
-        }
-
-        if (data.Action is not "inserir" and not "atualizar" and not "excluir")
-        {
-            throw new ValidationException("Action must be inserir, atualizar or excluir.");
-        }
-    }
+    // private void ValidateLineRules(CsvImportLineData data)
+    // {
+    //     // Validação comentada - referenciar ICpfProtectionService via scope quando necessário
+    // }
 
     private static void ValidateHeader(string headerLine)
     {

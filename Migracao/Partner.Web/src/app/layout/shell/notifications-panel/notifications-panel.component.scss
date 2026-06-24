@@ -7,6 +7,12 @@
   padding: 16px;
 }
 
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -33,15 +39,18 @@
 .notification {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 8px 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .notification.unread {
   background: rgba(63, 81, 181, 0.08);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-color: rgba(63, 81, 181, 0.35);
 }
 
 .notification-header {
@@ -53,12 +62,15 @@
 
 .notification-header .title {
   font-weight: 600;
+  font-size: 14px;
 }
 
 .message {
   margin: 0;
   color: var(--text-muted, #6d6d6d);
   font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .actions {
@@ -66,6 +78,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .actions .date {
@@ -75,7 +88,12 @@
 
 .actions .buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.actions .buttons button {
+  min-width: 96px;
 }
 
 .empty-state {

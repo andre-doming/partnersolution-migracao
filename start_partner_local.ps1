@@ -1,4 +1,4 @@
-# ════════════════════════════════════════════════════════════════════════════════
+﻿# ════════════════════════════════════════════════════════════════════════════════
 # PARTNER.MODERN — LOCAL BOOTSTRAP SCRIPT (PowerShell)
 # ════════════════════════════════════════════════════════════════════════════════
 #
@@ -14,6 +14,8 @@
 # 
 # IMPORTANTE: Se receber erro de execução, execute:
 #   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+#
+# DICA: No PowerShell, comandos no diretório atual exigem .\
 # ════════════════════════════════════════════════════════════════════════════════
 
 param(
@@ -54,6 +56,20 @@ function Write-Warning-Custom {
 function Write-Info {
     param([string]$Text)
     Write-Host "[*] $Text" -ForegroundColor Cyan
+}
+
+function Get-EnvValueOrDefault {
+    param(
+        [hashtable]$Map,
+        [string]$Key,
+        [string]$Default
+    )
+
+    if ($Map.ContainsKey($Key) -and -not [string]::IsNullOrWhiteSpace($Map[$Key])) {
+        return $Map[$Key]
+    }
+
+    return $Default
 }
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -180,39 +196,39 @@ Write-Header "CONFIGURATION SUMMARY"
 
 Write-Host ""
 Write-Host "🗄️  DATABASE" -ForegroundColor Cyan
-Write-Host "  SQL Server: $($envVars["ConnectionStrings__PartnerDb"])"
+Write-Host "  SQL Server: $($envVars['ConnectionStrings__PartnerDb'])"
 
 Write-Host ""
 Write-Host "🔐 AUTHENTICATION" -ForegroundColor Cyan
-Write-Host "  JWT Issuer:       $($envVars["Jwt__Issuer"])"
-Write-Host "  JWT Audience:     $($envVars["Jwt__Audience"])"
-Write-Host "  JWT Expiration:   $($envVars["Jwt__ExpirationMinutes"] ?? "60") minutes"
+Write-Host "  JWT Issuer:       $($envVars['Jwt__Issuer'])"
+Write-Host "  JWT Audience:     $($envVars['Jwt__Audience'])"
+Write-Host ("  JWT Expiration:   {0} minutes" -f (Get-EnvValueOrDefault $envVars 'Jwt__ExpirationMinutes' '60'))
 Write-Host "  JWT Secret:       [CONFIGURED]" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "🐰 RABBITMQ" -ForegroundColor Cyan
-Write-Host "  Host:             $($envVars["RabbitMq__Host"])"
-Write-Host "  Port:             $($envVars["RabbitMq__Port"] ?? "5672")"
-Write-Host "  VirtualHost:      $($envVars["RabbitMq__VirtualHost"] ?? "partner")"
-Write-Host "  Username:         $($envVars["RabbitMq__Username"])"
-Write-Host "  Import Queue:     $($envVars["RabbitMq__ImportJobsQueue"] ?? "partner.import.jobs")"
+Write-Host "  Host:             $($envVars['RabbitMq__Host'])"
+Write-Host ("  Port:             {0}" -f (Get-EnvValueOrDefault $envVars 'RabbitMq__Port' '5672'))
+Write-Host ("  VirtualHost:      {0}" -f (Get-EnvValueOrDefault $envVars 'RabbitMq__VirtualHost' 'partner'))
+Write-Host "  Username:         $($envVars['RabbitMq__Username'])"
+Write-Host ("  Import Queue:     {0}" -f (Get-EnvValueOrDefault $envVars 'RabbitMq__ImportJobsQueue' 'partner.import.jobs'))
 
 Write-Host ""
 Write-Host "🌐 VTEX INTEGRATION" -ForegroundColor Cyan
-Write-Host "  Enabled:          $($envVars["Vtex__Enabled"] ?? "false")"
-if ($envVars["Vtex__Enabled"] -eq "true") {
-    Write-Host "  BaseUrl:          $($envVars["Vtex__BaseUrl"])"
-    Write-Host "  RetryCount:       $($envVars["Vtex__RetryCount"] ?? "3")"
+Write-Host ("  Enabled:          {0}" -f (Get-EnvValueOrDefault $envVars 'Vtex__Enabled' 'false'))
+if ($envVars['Vtex__Enabled'] -eq "true") {
+    Write-Host "  BaseUrl:          $($envVars['Vtex__BaseUrl'])"
+    Write-Host ("  RetryCount:       {0}" -f (Get-EnvValueOrDefault $envVars 'Vtex__RetryCount' '3'))
 }
 
 Write-Host ""
 Write-Host "🌍 CORS" -ForegroundColor Cyan
-Write-Host "  Allowed Origins:  $($envVars["Cors__AllowedOrigins__0"] ?? "http://localhost:4200")"
+Write-Host ("  Allowed Origins:  {0}" -f (Get-EnvValueOrDefault $envVars 'Cors__AllowedOrigins__0' 'http://localhost:4200'))
 
 Write-Host ""
 Write-Host "📊 LOGGING" -ForegroundColor Cyan
-Write-Host "  Min Level:        $($envVars["Serilog__MinimumLevel__Default"] ?? "Information")"
-Write-Host "  Seq Enabled:      $($envVars["Serilog__Seq__Enabled"] ?? "false")"
+Write-Host ("  Min Level:        {0}" -f (Get-EnvValueOrDefault $envVars 'Serilog__MinimumLevel__Default' 'Information'))
+Write-Host ("  Seq Enabled:      {0}" -f (Get-EnvValueOrDefault $envVars 'Serilog__Seq__Enabled' 'false'))
 
 Write-Host ""
 Write-Host "🌐 ENDPOINTS" -ForegroundColor Cyan
@@ -280,7 +296,7 @@ Write-Header "STEP 6: Starting Partner.Api server"
 
 Write-Host ""
 Write-Host "[READY TO START]" -ForegroundColor Green
-Write-Host "  Database:    $($envVars["ConnectionStrings__PartnerDb"])"
+Write-Host "  Database:    $($envVars['ConnectionStrings__PartnerDb'])"
 Write-Host "  Environment: Development"
 Write-Host "  Port:        HTTPS 7111 / HTTP 5205"
 Write-Host ""

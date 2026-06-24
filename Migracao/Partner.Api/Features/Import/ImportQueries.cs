@@ -8,18 +8,67 @@ public static class ImportQueries
             CREATE TABLE dbo.ImportJobs
             (
                 id INT IDENTITY(1,1) PRIMARY KEY,
+                public_id UNIQUEIDENTIFIER NOT NULL UNIQUE,
                 feature NVARCHAR(60) NOT NULL,
                 file_name NVARCHAR(260) NOT NULL,
+                file_path NVARCHAR(500) NOT NULL,
+                file_hash_sha256 NVARCHAR(64) NOT NULL,
                 company_id INT NOT NULL,
                 status NVARCHAR(30) NOT NULL,
                 total_rows INT NOT NULL,
+                processed_rows INT NOT NULL DEFAULT 0,
                 success_rows INT NOT NULL,
                 error_rows INT NOT NULL,
                 duration_ms INT NOT NULL,
                 started_at_utc DATETIME2 NOT NULL,
                 finished_at_utc DATETIME2 NULL,
-                created_by_user_id INT NOT NULL
+                created_by_user_id INT NOT NULL,
+                created_at_utc DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                attempts INT NOT NULL DEFAULT 0,
+                last_error NVARCHAR(MAX) NULL,
+                locked_by NVARCHAR(100) NULL,
+                locked_at_utc DATETIME2 NULL,
+                last_heartbeat_at_utc DATETIME2 NULL,
+                correlation_id NVARCHAR(100) NOT NULL,
+                cancel_requested BIT NOT NULL DEFAULT 0,
+                cancel_requested_at_utc DATETIME2 NULL,
+                cancelled_at_utc DATETIME2 NULL,
+                retry_of_import_job_id INT NULL
             );
+        END
+        ELSE
+        BEGIN
+            -- Add missing columns if they don't exist
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='public_id')
+                ALTER TABLE dbo.ImportJobs ADD public_id UNIQUEIDENTIFIER NOT NULL UNIQUE DEFAULT NEWID();
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='file_path')
+                ALTER TABLE dbo.ImportJobs ADD file_path NVARCHAR(500) NOT NULL DEFAULT '';
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='file_hash_sha256')
+                ALTER TABLE dbo.ImportJobs ADD file_hash_sha256 NVARCHAR(64) NOT NULL DEFAULT '';
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='processed_rows')
+                ALTER TABLE dbo.ImportJobs ADD processed_rows INT NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='attempts')
+                ALTER TABLE dbo.ImportJobs ADD attempts INT NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='last_error')
+                ALTER TABLE dbo.ImportJobs ADD last_error NVARCHAR(MAX) NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='locked_by')
+                ALTER TABLE dbo.ImportJobs ADD locked_by NVARCHAR(100) NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='locked_at_utc')
+                ALTER TABLE dbo.ImportJobs ADD locked_at_utc DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='last_heartbeat_at_utc')
+                ALTER TABLE dbo.ImportJobs ADD last_heartbeat_at_utc DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='correlation_id')
+                ALTER TABLE dbo.ImportJobs ADD correlation_id NVARCHAR(100) NOT NULL DEFAULT '';
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='cancel_requested')
+                ALTER TABLE dbo.ImportJobs ADD cancel_requested BIT NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='cancel_requested_at_utc')
+                ALTER TABLE dbo.ImportJobs ADD cancel_requested_at_utc DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='cancelled_at_utc')
+                ALTER TABLE dbo.ImportJobs ADD cancelled_at_utc DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='retry_of_import_job_id')
+                ALTER TABLE dbo.ImportJobs ADD retry_of_import_job_id INT NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobs' AND COLUMN_NAME='created_at_utc')
+                ALTER TABLE dbo.ImportJobs ADD created_at_utc DATETIME2 NOT NULL DEFAULT GETUTCDATE();
         END;
 
         IF OBJECT_ID('dbo.ImportJobErrors', 'U') IS NULL
@@ -28,44 +77,129 @@ public static class ImportQueries
             (
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 import_job_id INT NOT NULL,
+                seq INT NOT NULL,
                 line_number INT NOT NULL,
+                error_code NVARCHAR(50) NULL,
                 action NVARCHAR(30) NULL,
                 document NVARCHAR(30) NULL,
                 email NVARCHAR(150) NULL,
                 message NVARCHAR(500) NOT NULL,
+                raw_line NVARCHAR(MAX) NULL,
+                created_at_utc DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
                 CONSTRAINT FK_ImportJobErrors_ImportJobs FOREIGN KEY (import_job_id) REFERENCES dbo.ImportJobs(id)
             );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobErrors' AND COLUMN_NAME='seq')
+                ALTER TABLE dbo.ImportJobErrors ADD seq INT NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobErrors' AND COLUMN_NAME='error_code')
+                ALTER TABLE dbo.ImportJobErrors ADD error_code NVARCHAR(50) NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobErrors' AND COLUMN_NAME='raw_line')
+                ALTER TABLE dbo.ImportJobErrors ADD raw_line NVARCHAR(MAX) NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportJobErrors' AND COLUMN_NAME='created_at_utc')
+                ALTER TABLE dbo.ImportJobErrors ADD created_at_utc DATETIME2 NOT NULL DEFAULT GETUTCDATE();
+        END;
+
+        IF OBJECT_ID('dbo.ImportJobItems', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.ImportJobItems
+            (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                import_job_id INT NOT NULL,
+                seq INT NOT NULL,
+                line_hash NVARCHAR(64) NOT NULL,
+                status NVARCHAR(30) NOT NULL,
+                processed_at_utc DATETIME2 NULL,
+                error_id INT NULL,
+                target_key NVARCHAR(100) NULL,
+                CONSTRAINT FK_ImportJobItems_ImportJobs FOREIGN KEY (import_job_id) REFERENCES dbo.ImportJobs(id),
+                CONSTRAINT UK_ImportJobItems UNIQUE (import_job_id, seq)
+            );
+        END;
+
+        IF OBJECT_ID('dbo.ImportNotifications', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.ImportNotifications
+            (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                import_job_id INT NOT NULL,
+                user_id INT NOT NULL,
+                title NVARCHAR(200) NOT NULL,
+                message NVARCHAR(MAX) NOT NULL,
+                status NVARCHAR(30) NOT NULL,
+                created_at_utc DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                read_at_utc DATETIME2 NULL,
+                CONSTRAINT FK_ImportNotifications_ImportJobs FOREIGN KEY (import_job_id) REFERENCES dbo.ImportJobs(id)
+            );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportNotifications' AND COLUMN_NAME='message')
+                ALTER TABLE dbo.ImportNotifications ADD message NVARCHAR(MAX) NOT NULL DEFAULT '';
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='ImportNotifications' AND COLUMN_NAME='status')
+                ALTER TABLE dbo.ImportNotifications ADD status NVARCHAR(30) NOT NULL DEFAULT 'Unread';
         END;
         """;
 
     public const string InsertImportJob = """
         INSERT INTO dbo.ImportJobs
         (
+            public_id,
             feature,
             file_name,
+            file_path,
+            file_hash_sha256,
             company_id,
             status,
             total_rows,
+            processed_rows,
             success_rows,
             error_rows,
             duration_ms,
             started_at_utc,
             finished_at_utc,
-            created_by_user_id
+            created_by_user_id,
+            created_at_utc,
+            attempts,
+            last_error,
+            locked_by,
+            locked_at_utc,
+            last_heartbeat_at_utc,
+            correlation_id,
+            cancel_requested,
+            cancel_requested_at_utc,
+            cancelled_at_utc,
+            retry_of_import_job_id
         )
         VALUES
         (
+            @PublicId,
             @Feature,
             @FileName,
+            @FilePath,
+            @FileHashSha256,
             @CompanyId,
             @Status,
             @TotalRows,
+            @ProcessedRows,
             @SuccessRows,
             @ErrorRows,
             @DurationMs,
             @StartedAtUtc,
             @FinishedAtUtc,
-            @CreatedByUserId
+            @CreatedByUserId,
+            @CreatedAtUtc,
+            @Attempts,
+            @LastError,
+            @LockedBy,
+            @LockedAtUtc,
+            @LastHeartbeatAtUtc,
+            @CorrelationId,
+            @CancelRequested,
+            @CancelRequestedAtUtc,
+            @CancelledAtUtc,
+            @RetryOfImportJobId
         );
 
         SELECT CAST(SCOPE_IDENTITY() AS int);
@@ -107,18 +241,22 @@ public static class ImportQueries
     public const string ListImportJobs = """
         SELECT
             j.id AS Id,
+            j.public_id AS JobPublicId,
             j.feature AS Feature,
             j.file_name AS FileName,
             j.company_id AS CompanyId,
             j.status AS Status,
             j.total_rows AS TotalRows,
+            j.processed_rows AS ProcessedRows,
             j.success_rows AS SuccessRows,
             j.error_rows AS ErrorRows,
             j.duration_ms AS DurationMs,
+            j.created_at_utc AS CreatedAtUtc,
             j.started_at_utc AS StartedAtUtc,
             j.finished_at_utc AS FinishedAtUtc,
             j.created_by_user_id AS CreatedByUserId
         FROM dbo.ImportJobs j
+        /**where**/
         ORDER BY j.id DESC
         OFFSET @Offset ROWS
         FETCH NEXT @PageSize ROWS ONLY;
@@ -126,7 +264,8 @@ public static class ImportQueries
 
     public const string CountImportJobs = """
         SELECT COUNT(1)
-        FROM dbo.ImportJobs;
+        FROM dbo.ImportJobs j
+        /**where**/;
         """;
 
     public const string GetImportJobById = """
@@ -564,4 +703,5 @@ public static class ImportQueries
         ORDER BY e.seq ASC;
         """;
 }
+
 

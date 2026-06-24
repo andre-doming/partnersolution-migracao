@@ -1,0 +1,8 @@
+
+ProcessId Name       CommandLine
+--------- ----       -----------
+    89876 dotnet.exe "C:\Program Files\dotnet\dotnet.exe" run --configuration Debug --no-build
+   110752 dotnet.exe "C:\Program Files\dotnet\dotnet.exe" "c:\Users\Andre\.vscode\extensions\ms-dotnettools.csdevkit-3.20.199-win32-x64\components\CPS\platforms\win32-x64\node_modules\@microsoft\visu…
+    37280 dotnet.exe "C:\Program Files\dotnet\dotnet.exe" "C:\Program Files\dotnet\sdk\9.0.312\MSBuild.dll" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+   104868 dotnet.exe "C:\Program Files\dotnet\dotnet.exe" "C:\Program Files\dotnet\sdk\9.0.312\MSBuild.dll" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+

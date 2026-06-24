@@ -260,7 +260,6 @@ public static class ServiceCollectionExtensions
             return new ImportRabbitMqConnectionFactory(options);
         });
         services.AddScoped<ImportJobRepository>();
-        services.AddHostedService<ImportWorker>();
 
         // Registrar infraestrutura VTEX
         services.AddSingleton(sp =>
@@ -294,9 +293,10 @@ public static class ServiceCollectionExtensions
             {
                 client.DefaultRequestHeaders.Add("X-VTEX-API-AppToken", options.AppToken);
             }
-        });
+         });
 
-        services.AddHostedService<VtexSyncWorker>();
+         // TEMPORÁRIO: Desabilitado para testes com RabbitMQ offline
+         // services.AddHostedService<VtexSyncWorker>();
 
         return services;
     }

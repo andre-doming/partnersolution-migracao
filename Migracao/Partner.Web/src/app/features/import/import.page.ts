@@ -112,11 +112,20 @@ export class ImportPageComponent implements OnInit, OnDestroy {
     this.startPolling();
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe((params) => {
       const jobId = params['job'];
-      if (jobId) {
+      if (!jobId) {
+        return;
+      }
+
+      if (this.isValidGuid(jobId)) {
         this.loadJobDetails(jobId);
         this.loadJobErrors(jobId);
         this.showHistory = true;
+        return;
       }
+
+      this.snackBar.open('JobId inválido. Selecione uma importação válida no histórico.', 'Fechar', {
+        duration: 3500
+      });
     });
   }
 
@@ -290,38 +299,43 @@ export class ImportPageComponent implements OnInit, OnDestroy {
     this.selectedJobErrors = null;
     this.errorPageIndex = 0;
     this.errorPageSize = 10;
+    if (!this.isValidGuid(job.jobPublicId)) {
+      this.snackBar.open('JobId inválido. Selecione outra importação.', 'Fechar', { duration: 3500 });
+      return;
+    }
+
     this.loadJobDetails(job.jobPublicId);
     this.loadJobErrors(job.jobPublicId);
   }
 
-   clearSelection(): void {
-     this.selectedJob = null;
-     this.selectedJobErrors = null;
-   }
+  clearSelection(): void {
+    this.selectedJob = null;
+    this.selectedJobErrors = null;
+  }
 
-   downloadErrors(): void {
-     if (!this.selectedJob || this.selectedJob.errorRows === 0) {
-       this.snackBar.open('Nenhum erro disponível para download.', 'Fechar', { duration: 3000 });
-       return;
-     }
+  downloadErrors(): void {
+    if (!this.selectedJob || this.selectedJob.errorRows === 0) {
+      this.snackBar.open('Nenhum erro disponível para download.', 'Fechar', { duration: 3000 });
+      return;
+    }
 
-     this.importService.exportJobErrors(this.selectedJob.jobPublicId).subscribe({
-       next: (blob) => {
-         const url = window.URL.createObjectURL(blob);
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = `erros_${this.selectedJob?.fileName}_${this.selectedJob?.jobPublicId}.csv`;
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         window.URL.revokeObjectURL(url);
-         this.snackBar.open('Arquivo de erros baixado com sucesso.', 'Fechar', { duration: 3000 });
-       },
-       error: () => this.snackBar.open('Erro ao baixar arquivo de erros.', 'Fechar', { duration: 3500 })
-     });
-   }
+    this.importService.exportJobErrors(this.selectedJob.jobPublicId).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `erros_${this.selectedJob?.fileName}_${this.selectedJob?.jobPublicId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        this.snackBar.open('Arquivo de erros baixado com sucesso.', 'Fechar', { duration: 3000 });
+      },
+      error: () => this.snackBar.open('Erro ao baixar arquivo de erros.', 'Fechar', { duration: 3500 })
+    });
+  }
 
-   isTerminal(status: string): boolean {
+  isTerminal(status: string): boolean {
     return ['Completed', 'CompletedWithErrors', 'Failed', 'Cancelled'].includes(status);
   }
 
@@ -338,6 +352,28 @@ export class ImportPageComponent implements OnInit, OnDestroy {
 
   trackJob = (_: number, job: ImportJobItem) => job.jobPublicId;
 
+  private isValidGuid(guid: string): boolean {
+    // Rejeita apenas: vazio, null, undefined, ou GUID vazio
+    if (!guid || typeof guid !== 'string') {
+      return false;
+    }
+
+    const trimmed = guid.trim();
+
+    // Rejeita GUID vazio (todos zeros)
+    if (trimmed === '00000000-0000-0000-0000-000000000000') {
+      return false;
+    }
+
+    // Aceita qualquer coisa que pareça um GUID (com hífens e comprimento correto)
+    // Formato esperado: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 caracteres)
+    if (trimmed.length === 36 && trimmed.match(/^[0-9a-f-]{36}$/i)) {
+      return true;
+    }
+
+    return false;
+  }
+
   private startPolling(): void {
     this.isPolling = true;
     timer(0, 30000)
@@ -348,7 +384,7 @@ export class ImportPageComponent implements OnInit, OnDestroy {
           this.loadJobs(true);
         }
 
-        if (this.selectedJob && (this.selectedJob.status === 'Queued' || this.selectedJob.status === 'Running')) {
+        if (this.selectedJob && (this.selectedJob.status === 'Queued' || this.selectedJob.status === 'Running') && this.isValidGuid(this.selectedJob.jobPublicId)) {
           this.loadJobDetails(this.selectedJob.jobPublicId, true);
           this.loadJobErrors(this.selectedJob.jobPublicId, true);
         }
@@ -412,7 +448,10 @@ export class ImportPageComponent implements OnInit, OnDestroy {
         next: (response) => {
           this.selectedJob = response;
         },
-        error: () => this.snackBar.open('Erro ao carregar detalhes da importação.', 'Fechar', { duration: 3000 })
+        error: () => {
+          this.selectedJob = null;
+          this.snackBar.open('JobId inválido ou sem acesso. Selecione outra importação.', 'Fechar', { duration: 3500 });
+        }
       });
   }
 
@@ -428,10 +467,16 @@ export class ImportPageComponent implements OnInit, OnDestroy {
         next: (response) => {
           this.selectedJobErrors = response;
         },
-        error: () => this.snackBar.open('Erro ao carregar erros da importação.', 'Fechar', { duration: 3000 })
+        error: () => {
+          this.selectedJobErrors = null;
+          this.snackBar.open('Não foi possível carregar os erros dessa importação.', 'Fechar', { duration: 3500 });
+        }
       });
   }
 }
+
+
+
 
 
 

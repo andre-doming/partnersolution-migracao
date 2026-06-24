@@ -53,7 +53,8 @@ REM ═════════════════════════�
 echo [*] Loading environment variables from .env...
 
 REM Read .env file and set environment variables
-for /f "tokens=1,2 delims==" %%A in ('findstr /v "^#" .env ^| findstr /v "^$"') do (
+REM Use tokens=1,* to keep values that contain '=' (ex: connection strings)
+for /f "tokens=1,* delims==" %%A in ('findstr /v "^#" .env ^| findstr /v "^$"') do (
     set "%%A=%%B"
 )
 

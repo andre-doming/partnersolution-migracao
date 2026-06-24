@@ -2,6 +2,77 @@ namespace Partner.Api.Features.Auth.Mfa;
 
 public static class MfaQueries
 {
+    public const string EnsureMfaTables = """
+        IF OBJECT_ID('dbo.tb_usuario_mfa', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.tb_usuario_mfa
+            (
+                UserId INT PRIMARY KEY,
+                MfaEnabled BIT NOT NULL DEFAULT 0,
+                MfaSecret NVARCHAR(100) NULL,
+                MfaSetupStartedAt DATETIME2 NULL,
+                MfaConfiguredAt DATETIME2 NULL,
+                MfaResetRequired BIT NOT NULL DEFAULT 0,
+                RecoveryCodesGeneratedAt DATETIME2 NULL,
+                FailedPasswordAttempts INT NOT NULL DEFAULT 0,
+                PasswordLockoutUntil DATETIME2 NULL,
+                FailedMfaAttempts INT NOT NULL DEFAULT 0,
+                MfaLockoutUntil DATETIME2 NULL,
+                LastSuccessfulMfaAt DATETIME2 NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                UpdatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+        END;
+
+        IF OBJECT_ID('dbo.tb_usuario_mfa_recovery', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.tb_usuario_mfa_recovery
+            (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                UserId INT NOT NULL,
+                CodeId UNIQUEIDENTIFIER NOT NULL,
+                CodeHash NVARCHAR(256) NOT NULL,
+                Used BIT NOT NULL DEFAULT 0,
+                UsedAt DATETIME2 NULL,
+                Invalidated BIT NOT NULL DEFAULT 0,
+                InvalidatedAt DATETIME2 NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+        END;
+
+        IF OBJECT_ID('dbo.tb_auth_mfa_pending', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.tb_auth_mfa_pending
+            (
+                Id UNIQUEIDENTIFIER PRIMARY KEY,
+                UserId INT NOT NULL,
+                TokenHash NVARCHAR(256) NOT NULL,
+                ExpiresAt DATETIME2 NOT NULL,
+                ConsumedAt DATETIME2 NULL,
+                IpAddress NVARCHAR(45) NULL,
+                UserAgentHash VARBINARY(32) NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+        END;
+
+        IF OBJECT_ID('dbo.tb_audit_log', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.tb_audit_log
+            (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                UserId INT NOT NULL,
+                ActorUserId INT NOT NULL,
+                EventType NVARCHAR(50) NOT NULL,
+                EventDescription NVARCHAR(500) NOT NULL,
+                CorrelationId NVARCHAR(100) NOT NULL,
+                IpAddress NVARCHAR(45) NULL,
+                UserAgent NVARCHAR(500) NULL,
+                MetadataJson NVARCHAR(MAX) NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+        END;
+        """;
+
     public const string GetMfaStateByUserId = """
         SELECT
             m.UserId AS UserId,
